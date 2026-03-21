@@ -20,6 +20,7 @@ FROM_GALPY_TO_INTERNAL = {
 }
 
 SUPPORTED_POTENTIALS = (
+    # SPHERICAL POTENTIALS
     potential.BurkertPotential,
     potential.DehnenCoreSphericalPotential,
     potential.DehnenSphericalPotential,
@@ -37,6 +38,7 @@ SUPPORTED_POTENTIALS = (
     potential.PseudoIsothermalPotential,
     potential.TwoPowerSphericalPotential,
     potential.KuzminDiskPotential,
+    # AXISYMMETRIC POTENTIALS
     potential.FlattenedPowerPotential,
     potential.KuzminDiskPotential,
     potential.KuzminKutuzovStaeckelPotential,
@@ -46,13 +48,39 @@ SUPPORTED_POTENTIALS = (
     potential.RingPotential,
 )
 
+UNVECTORIZED_POTENTIALS = (
+    potential.HomogeneousSpherePotential,
+    potential.SphericalShellPotential,
+    potential.DoubleExponentialDiskPotential,
+    potential.RazorThinExponentialDiskPotential,
+    potential.PerfectEllipsoidPotential,
+    potential.PowerTriaxialPotential,
+    potential.TwoPowerTriaxialPotential,
+    potential.TriaxialGaussianPotential,
+    potential.TriaxialJaffePotential,
+    potential.TriaxialHernquistPotential,
+    potential.TriaxialNFWPotential,
+)
+
 RMIN = 1e-15 * u.kpc
 
+def _scalar_loop(func, R, z, phi, **kwargs):
+    '''
+    Loop over inputs to apply a galpy function that doesn't support vectorization.
+    '''
+    return u.Quantity([func(R_i, z_i, phi=phi_i, **kwargs) 
+                       for R_i, z_i, phi_i in zip(R, z, phi)])
+
 def _check_supported_pot(pot):
-    if not isinstance(pot, SUPPORTED_POTENTIALS):
+    if isinstance(pot, UNVECTORIZED_POTENTIALS):
+        warnings.warn(
+            f"{type(pot).__name__} is supported by ezfalcon but not vectorized. "
+            f"Performance may be poor."
+        )
+    elif not isinstance(pot, SUPPORTED_POTENTIALS):
         raise TypeError(
             f"{type(pot).__name__} is not supported by ezfalconv2. "
-            f"Supported potentials: {', '.join(p.__name__ for p in SUPPORTED_POTENTIALS)}"
+            f"Supported potentials: {', '.join(p.__name__ for p in SUPPORTED_POTENTIALS + UNVECTORIZED_POTENTIALS)}"
         )
     
 def _check_physical(obj):
@@ -61,9 +89,13 @@ def _check_physical(obj):
         obj.turn_physical_on(ro=8.0, vo=220.0)
 
 def _galpy_pot_to_pot_fn(pot):
+    vectorized = isinstance(pot, SUPPORTED_POTENTIALS)
     def pot_fn(pos, t):
         R, phi, z = rect_to_cyl(*np.array(pos).T*u.kpc)
-        return pot(R, z, phi=phi, quantity=True, t=t*u.Myr).to(u.kpc**2/u.Myr**2).value
+        if vectorized:
+            return pot(R, z, phi=phi, quantity=True, t=t*u.Myr).to(u.kpc**2/u.Myr**2).value
+        else:
+            return _scalar_loop(pot, R, z, phi, quantity=True, t=t*u.Myr).to(u.kpc**2/u.Myr**2).value
     return pot_fn
 
 def _galpy_pot_to_acc_fn(pot):
@@ -84,15 +116,23 @@ def _galpy_pot_to_acc_fn(pot):
         in ezfalcon internal units.
 
     '''
+    vectorized = isinstance(pot, SUPPORTED_POTENTIALS)
     def acc_fn(pos, t):
         R, phi, z = rect_to_cyl(*np.array(pos).T*u.kpc)
-        aR = pot.Rforce(R, z, phi=phi, quantity=True, t=t*u.Myr)
-        aphitorque = pot.phitorque(R, z, phi=phi, quantity=True, t=t*u.Myr)
-        az = pot.zforce(R, z, phi=phi, quantity=True, t=t*u.Myr)
+        if vectorized:
+            aR = pot.Rforce(R, z, phi=phi, quantity=True, t=t*u.Myr)
+            aphitorque = pot.phitorque(R, z, phi=phi, quantity=True, t=t*u.Myr)
+            az = pot.zforce(R, z, phi=phi, quantity=True, t=t*u.Myr)
+        else:
+            aR = _scalar_loop(pot.Rforce, R, z, phi, quantity=True, t=t*u.Myr)
+            aphitorque = _scalar_loop(pot.phitorque, R, z, phi, quantity=True, t=t*u.Myr)
+            az = _scalar_loop(pot.zforce, R, z, phi, quantity=True, t=t*u.Myr)
         aphi = aphitorque / R
         ax, ay, az = cyl_to_rect_vec(aR, aphi, az, phi)
         return np.array([ax.to(u.kpc/u.Myr**2).value, 
                 ay.to(u.kpc/u.Myr**2).value, 
                 az.to(u.kpc/u.Myr**2).value]).T
     return acc_fn
+
+
         

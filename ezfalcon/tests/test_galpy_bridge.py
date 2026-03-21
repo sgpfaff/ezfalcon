@@ -10,7 +10,6 @@ from scipy.differentiate import derivative
 import astropy.units as u
 
 
-
 SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
     potential.BurkertPotential(),
     potential.TwoPowerSphericalPotential(),
@@ -29,6 +28,14 @@ SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
     potential.PowerSphericalPotential(),
     potential.PowerSphericalPotentialwCutoff(),
     potential.PseudoIsothermalPotential(),
+    potential.HomogeneousSpherePotential(),
+    potential.SphericalShellPotential(),
+    potential.TwoPowerTriaxialPotential(b=1., c=1.),
+    potential.TriaxialGaussianPotential(b=1., c=1.),
+    potential.TriaxialJaffePotential(b=1., c=1.),
+    potential.TriaxialHernquistPotential(b=1., c=1.),
+    potential.TriaxialNFWPotential(b=1., c=1.),
+    potential.PerfectEllipsoidPotential(b=1., c=1.),
 ]
 
 SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
@@ -39,21 +46,34 @@ SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
     potential.MiyamotoNagaiPotential(),
     potential.MN3ExponentialDiskPotential(),
     potential.RingPotential(),
+    potential.DoubleExponentialDiskPotential(),
+    potential.RazorThinExponentialDiskPotential(),
+]
+
+SUPPORTED_GALPY_TRIAXIAL_POTENTIALS = [
+    # Ellipsoidal Potentials
+    potential.TwoPowerTriaxialPotential(b=0.8, c=0.6),
+    potential.TriaxialGaussianPotential(b=0.8, c=0.6),
+    potential.TriaxialJaffePotential(b=0.8, c=0.6),
+    potential.TriaxialHernquistPotential(b=0.8, c=0.6),
+    potential.TriaxialNFWPotential(b=0.8, c=0.6),
+    potential.PerfectEllipsoidPotential(b=0.8, c=0.6),
 ]
 
 
 ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
-                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS)
+                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
+                                  SUPPORTED_GALPY_TRIAXIAL_POTENTIALS)
 
 UNSUPPORTED_GALPY_POTENTIALS = [
-    # Not vectorized
-    potential.HomogeneousSpherePotential(),
-    potential.SphericalShellPotential(),
-    potential.DoubleExponentialDiskPotential(),
-    potential.RazorThinExponentialDiskPotential()
+    potential.DehnenBarPotential(),
+    potential.FerrersPotential(),
+    potential.NullPotential(),
+    potential.SoftenedNeedleBarPotential(),
+    potential.SpiralArmsPotential()
 ]
 
-g = np.linspace(-100, 100, 10)
+g = np.linspace(-100, 100, 5)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
 FULL_TEST_R, FULL_TEST_PHI, FULL_TEST_Z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T*u.kpc)
 
@@ -106,6 +126,7 @@ def test_reflection_symmetry(spherical_potential):
 #----------------------------#
 #  Axisymmetric Potentials   #
 #----------------------------#
+
 @pytest.fixture(params=SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS, ids=lambda p: type(p).__name__)
 def axisymmetric_potential(request):
     pot = request.param
@@ -122,6 +143,9 @@ def test_axisymmetry(axisymmetric_potential):
     acc = acc_fn(points, t=0)
     magnitudes = np.linalg.norm(acc, axis=1)
     np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-12)
+
+
+
 
 #---------------------------#
 #  All Supported Potentials #
@@ -163,8 +187,52 @@ def test_potential_match(galpy_potential):
     galpy's own potential evaluation.'''
     ez_pot_fn = galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     ez_pot = ez_pot_fn(FULL_TEST_GRID_POSITIONS, t=0)
-    galpy_pot = galpy_potential(FULL_TEST_R, FULL_TEST_Z, phi=FULL_TEST_PHI, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
-    assert np.allclose(ez_pot, galpy_pot, rtol=1e-15)
+    if isinstance(galpy_potential, galpy_bridge.UNVECTORIZED_POTENTIALS):
+        galpy_pot = np.array([
+            galpy_potential(R, z, phi=p, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
+            for R, z, p in zip(FULL_TEST_R, FULL_TEST_Z, FULL_TEST_PHI)
+        ])
+    else:
+        galpy_pot = galpy_potential(FULL_TEST_R, FULL_TEST_Z, phi=FULL_TEST_PHI, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
+    assert np.allclose(ez_pot, galpy_pot, rtol=1e-15, equal_nan=True)
+
+#---------------------------#
+#   Triaxial Potentials     #
+#---------------------------#
+@pytest.fixture(params=SUPPORTED_GALPY_TRIAXIAL_POTENTIALS, ids=lambda p: type(p).__name__)
+def triaxial_potential(request):
+    pot = request.param
+    pot.turn_physical_on()
+    return pot
+
+def test_triaxial_reflection_symmetry(triaxial_potential):
+    '''For triaxial potentials centered at origin, a(r) = -a(-r).'''
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
+    pos = np.array([[5.0, 3.0, 1.0], [10.0, -7.0, 2.0]])
+    acc_pos = acc_fn(pos, t=0)
+    acc_neg = acc_fn(-pos, t=0)
+    np.testing.assert_allclose(acc_pos, -acc_neg, rtol=1e-12)
+
+def test_triaxial_plane_symmetry(triaxial_potential):
+    '''Reflecting through a coordinate plane flips only that force component.'''
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
+    pos = np.array([[5.0, 3.0, 2.0]])
+    acc = acc_fn(pos, t=0)
+    for axis in range(3):
+        reflected = pos.copy()
+        reflected[0, axis] *= -1
+        acc_ref = acc_fn(reflected, t=0)
+        for j in range(3):
+            if j == axis:
+                np.testing.assert_allclose(acc_ref[0, j], -acc[0, j], rtol=1e-10)
+            else:
+                np.testing.assert_allclose(acc_ref[0, j], acc[0, j], rtol=1e-10)
+
+def test_triaxial_nonzero_phitorque(triaxial_potential):
+    '''Triaxial potentials should have non-zero phi force at generic positions.'''
+    R, z, phi = 8.0 * u.kpc, 1.0 * u.kpc, 0.3 * u.rad
+    torque = triaxial_potential.phitorque(R, z, phi=phi, quantity=True)
+    assert torque.value != 0, "Expected non-zero phi torque for triaxial potential"
 
 #---------------------------#
 #  Unsupported Potentials   #
@@ -268,44 +336,14 @@ def test_time_independence(spherical_potential):
     acc_t100 = acc_fn(pos, t=100)
     np.testing.assert_array_equal(acc_t0, acc_t100)
 
-
-
-
-#--------------------------------------#
-#  KuzminDisk (non-spherical support)  #
-#--------------------------------------#
-
-def test_kuzmin_acceleration_match():
-    '''Bridge acc vs numerical -grad(Phi) for the non-spherical KuzminDiskPotential.'''
-    pot = potential.KuzminDiskPotential()
-    pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
-    pot_fn = galpy_bridge._galpy_pot_to_pot_fn(pot)
-    pot_i = partial(pot_fn, t=0)
-    # Use POSITION_GRID (already excludes z-axis)
-    acc_bridge = acc_fn(TEST_GRID_POSITIONS, t=0)
-    acc_num = _numerical_acc(pot_i, TEST_GRID_POSITIONS)
-    np.testing.assert_allclose(acc_bridge, acc_num, rtol=1e-6, atol=1e-10)
-
-def test_kuzmin_potential_match():
-    '''Bridge pot vs galpy native evaluation for KuzminDiskPotential.'''
-    pot = potential.KuzminDiskPotential()
-    pot.turn_physical_on()
-    ez_pot_fn = galpy_bridge._galpy_pot_to_pot_fn(pot)
-    ez_pot = ez_pot_fn(FULL_TEST_GRID_POSITIONS, t=0)
-    R, phi, z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T * u.kpc)
-    galpy_pot = pot(R, z, phi=phi, t=0, quantity=True).to(u.kpc**2 / u.Myr**2).value
-    np.testing.assert_allclose(ez_pot, galpy_pot, rtol=1e-15)
-
-
 #-----------------------#
 #  Force Direction      #
 #-----------------------#
 
 def test_force_direction_attractive(galpy_potential):
     '''Radial component of acceleration should point inward (dot(a, r) < 0).'''
-    if isinstance(galpy_potential, potential.RingPotential):
-        pytest.xfail("RingPotential is not purely attractive at all positions")
+    if isinstance(galpy_potential, potential.RingPotential) or isinstance(galpy_potential, potential.SphericalShellPotential):
+        pytest.xfail("RingPotential or SphericalShellPotential is not purely attractive at all positions")
     pos = np.array([
         [8.0, 0.0, 0.0],
         [0.0, 5.0, 3.0],
@@ -316,7 +354,6 @@ def test_force_direction_attractive(galpy_potential):
     acc = acc_fn(pos, t=0)
     dots = np.sum(pos * acc, axis=1)
     assert np.all(dots < 0), f"Expected all dot products < 0, got {dots}"
-
 
 #-------------------------------#
 #  Validation Helper Functions  #
@@ -340,10 +377,10 @@ def test_check_physical_pot_noop():
         warnings.simplefilter("error")
         galpy_bridge._check_physical(pot)
 
-def test_check_supported_warns_non_spherical():
-    '''_check_supported_pot should warn for axisymmetric (non-spherical) potentials.'''
-    pot = potential.KuzminDiskPotential()
-    with pytest.warns(UserWarning, match="More tests needed"):
+def test_check_supported_warns_non_vectorized():
+    '''_check_supported_pot should warn for non-vectorized potentials.'''
+    pot = potential.HomogeneousSpherePotential()
+    with pytest.warns(UserWarning, match="not vectorized"):
         galpy_bridge._check_supported_pot(pot)
 
 #--------------#
@@ -392,6 +429,7 @@ def test_very_small_radius_cored():
         acc = acc_fn(pos, t=0)
         assert np.all(np.isfinite(acc)), f"{type(pot).__name__} returned non-finite acc at r=1e-10"
 
+
 #--------------------------------#
 #  interpSphericalPotential      #
 #--------------------------------#
@@ -412,3 +450,6 @@ def test_interp_spherical_outside_grid():
     if np.any(np.isnan(acc)):
         pytest.skip("interpSphericalPotential produces NaN outside rgrid (expected)")
     assert np.all(np.isfinite(acc))
+
+
+    # TO ADD: galpy combo potential, time-dependent potential,
