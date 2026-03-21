@@ -46,6 +46,9 @@ SUPPORTED_POTENTIALS = (
     potential.MiyamotoNagaiPotential,
     potential.MN3ExponentialDiskPotential,
     potential.RingPotential,
+    # TRIAXIAL POTENTIALS
+    potential.DehnenBarPotential,
+    potential.SpiralArmsPotential
 )
 
 UNVECTORIZED_POTENTIALS = (
@@ -60,6 +63,9 @@ UNVECTORIZED_POTENTIALS = (
     potential.TriaxialJaffePotential,
     potential.TriaxialHernquistPotential,
     potential.TriaxialNFWPotential,
+    potential.FerrersPotential,
+    potential.NullPotential,
+    potential.SoftenedNeedleBarPotential,
 )
 
 RMIN = 1e-15 * u.kpc

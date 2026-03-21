@@ -50,7 +50,7 @@ SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
     potential.RazorThinExponentialDiskPotential(),
 ]
 
-SUPPORTED_GALPY_TRIAXIAL_POTENTIALS = [
+SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS = [
     # Ellipsoidal Potentials
     potential.TwoPowerTriaxialPotential(b=0.8, c=0.6),
     potential.TriaxialGaussianPotential(b=0.8, c=0.6),
@@ -60,18 +60,20 @@ SUPPORTED_GALPY_TRIAXIAL_POTENTIALS = [
     potential.PerfectEllipsoidPotential(b=0.8, c=0.6),
 ]
 
-
-ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
-                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
-                                  SUPPORTED_GALPY_TRIAXIAL_POTENTIALS)
-
-UNSUPPORTED_GALPY_POTENTIALS = [
+SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS = [
     potential.DehnenBarPotential(),
     potential.FerrersPotential(),
     potential.NullPotential(),
     potential.SoftenedNeedleBarPotential(),
     potential.SpiralArmsPotential()
 ]
+
+ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
+                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
+                                  SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS + 
+                                  SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS)
+
+UNSUPPORTED_GALPY_POTENTIALS = []
 
 g = np.linspace(-100, 100, 5)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
@@ -199,7 +201,8 @@ def test_potential_match(galpy_potential):
 #---------------------------#
 #   Triaxial Potentials     #
 #---------------------------#
-@pytest.fixture(params=SUPPORTED_GALPY_TRIAXIAL_POTENTIALS, ids=lambda p: type(p).__name__)
+
+@pytest.fixture(params=SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def triaxial_potential(request):
     pot = request.param
     pot.turn_physical_on()
@@ -339,10 +342,17 @@ def test_time_independence(spherical_potential):
 #-----------------------#
 #  Force Direction      #
 #-----------------------#
+@pytest.fixture(params=(SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
+                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
+                                  SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS), ids=lambda p: type(p).__name__)
+def general_galpy_potential(request):
+    pot = request.param
+    pot.turn_physical_on()
+    return pot
 
-def test_force_direction_attractive(galpy_potential):
+def test_force_direction_attractive(general_galpy_potential):
     '''Radial component of acceleration should point inward (dot(a, r) < 0).'''
-    if isinstance(galpy_potential, potential.RingPotential) or isinstance(galpy_potential, potential.SphericalShellPotential):
+    if isinstance(general_galpy_potential, potential.RingPotential) or isinstance(general_galpy_potential, potential.SphericalShellPotential):
         pytest.xfail("RingPotential or SphericalShellPotential is not purely attractive at all positions")
     pos = np.array([
         [8.0, 0.0, 0.0],
@@ -350,7 +360,7 @@ def test_force_direction_attractive(galpy_potential):
         [3.0, -4.0, 1.0],
         [-2.0, -2.0, -2.0],
     ])
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(general_galpy_potential)
     acc = acc_fn(pos, t=0)
     dots = np.sum(pos * acc, axis=1)
     assert np.all(dots < 0), f"Expected all dot products < 0, got {dots}"
