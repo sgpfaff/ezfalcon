@@ -1,0 +1,88 @@
+[build-system]
+requires = [
+  "setuptools>=62.1",
+  "setuptools_scm[toml]>=8.0.0",
+  "wheel",]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ezfalconv2"
+description = ""
+requires-python = ">=3.9"
+readme = { file = "README.rst", content-type = "text/x-rst" }
+license = { file = "licenses/LICENSE.rst" }
+authors = [
+  { name = "Gabriel Pfaffman", email = "gabriel.pfaffman@mail.utoronto.ca" },
+]
+dependencies = []
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-doctestplus",
+    "pytest-cov",
+]
+docs = [
+    "sphinx",
+    "sphinx-automodapi",
+]
+
+[tool.setuptools]
+zip-safe = false
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["ezfalconv2*"]
+
+[tool.setuptools_scm]
+version_file = "ezfalconv2/version.py"
+
+[tool.pytest.ini_options]
+testpaths = [
+  "ezfalconv2",
+  "docs",
+]
+doctest_plus = "enabled"
+text_file_format = "rst"
+addopts = "--doctest-rst"
+norecursedirs = ["ezfalconv2[\\/]_dev"]
+
+[tool.coverage.run]
+omit = [
+ "ezfalconv2/__init*",
+ "ezfalconv2/conftest.py",
+ "ezfalconv2/*setup_package*",
+ "ezfalconv2/tests/*",
+ "ezfalconv2/*/tests/*",
+ "ezfalconv2/extern/*",
+ "ezfalconv2/version*",
+ "*/ezfalconv2/__init*",
+ "*/ezfalconv2/conftest.py",
+ "*/ezfalconv2/*setup_package*",
+ "*/ezfalconv2/tests/*",
+ "*/ezfalconv2/*/tests/*",
+ "*/ezfalconv2/extern/*",
+ "*/ezfalconv2/version*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  # Have to re-enable the standard pragma
+  "pragma: no cover",
+  # Don't complain about packages we have installed
+  "except ImportError",
+  # Don't complain if tests don't hit assertions
+  "raise AssertionError",
+  "raise NotImplementedError",
+  # Don't complain about script hooks
+  "def main(.*):",
+  # Ignore branches that don't pertain to this version of Python
+  "pragma: py{ignore_python_version}",
+  # Don't complain about IPython completion helper
+  "def _ipython_key_completions_",
+  # typing.TYPE_CHECKING is False at runtime
+  "if TYPE_CHECKING:",
+  # Ignore typing overloads
+  "@overload",
+]
