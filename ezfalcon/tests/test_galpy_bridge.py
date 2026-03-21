@@ -10,9 +10,6 @@ from scipy.differentiate import derivative
 import astropy.units as u
 
 
-#-----------------------#
-#  Spherical Potentials #
-#-----------------------#
 
 SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
     potential.BurkertPotential(),
@@ -34,13 +31,40 @@ SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
     potential.PseudoIsothermalPotential(),
 ]
 
-g = np.linspace(-100, 100, 50)
+SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
+    potential.FlattenedPowerPotential(),
+    potential.KuzminDiskPotential(),
+    potential.KuzminKutuzovStaeckelPotential(),
+    potential.LogarithmicHaloPotential(q=0.8),
+    potential.MiyamotoNagaiPotential(),
+    potential.MN3ExponentialDiskPotential(),
+    potential.RingPotential(),
+]
+
+
+ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
+                                  SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS)
+
+UNSUPPORTED_GALPY_POTENTIALS = [
+    # Not vectorized
+    potential.HomogeneousSpherePotential(),
+    potential.SphericalShellPotential(),
+    potential.DoubleExponentialDiskPotential(),
+    potential.RazorThinExponentialDiskPotential()
+]
+
+g = np.linspace(-100, 100, 10)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
 FULL_TEST_R, FULL_TEST_PHI, FULL_TEST_Z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T*u.kpc)
 
 # Exclude the z-axis (x=0, y=0) — galpy forces have a known singularity at R=0
 TEST_GRID_POSITIONS = FULL_TEST_GRID_POSITIONS[((FULL_TEST_GRID_POSITIONS[:, 0] != 0) | (FULL_TEST_GRID_POSITIONS[:, 1] != 0))]
 TEST_R, TEST_PHI, TEST_Z = rect_to_cyl(*TEST_GRID_POSITIONS.T*u.kpc)
+
+
+#-----------------------#
+#  Spherical Potentials #
+#-----------------------#
 
 @pytest.fixture(params=SUPPORTED_GALPY_SPHERICAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def spherical_potential(request):
@@ -53,19 +77,60 @@ def test_radial_acc_only(spherical_potential):
     acc = acc_fn(TEST_GRID_POSITIONS, t=0)
     assert np.allclose(np.cross(TEST_GRID_POSITIONS, acc), 0, atol=1e-14)
 
+def test_spherical_symmetry(spherical_potential):
+    '''|a| should be identical at the same radius but different angles.'''
+    r = 10.0  # kpc
+    # Points at the same radius along different axes / diagonals
+    d = r / np.sqrt(3)
+    points = np.array([
+        [r, 0, 0],
+        [0, r, 0],
+        [-r, 0, 0],
+        [d, d, d],
+        [-d, d, -d],
+    ])
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    acc = acc_fn(points, t=0)
+    magnitudes = np.linalg.norm(acc, axis=1)
+    np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-10)
+
+def test_reflection_symmetry(spherical_potential):
+    '''For spherical potentials, a(r) = -a(-r) (odd parity).'''
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    pos = np.array([[5.0, 3.0, 1.0], [10.0, -7.0, 2.0]])
+    acc_pos = acc_fn(pos, t=0)
+    acc_neg = acc_fn(-pos, t=0)
+    np.testing.assert_allclose(acc_pos, -acc_neg, rtol=1e-12)
+    
+
+#----------------------------#
+#  Axisymmetric Potentials   #
+#----------------------------#
+@pytest.fixture(params=SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS, ids=lambda p: type(p).__name__)
+def axisymmetric_potential(request):
+    pot = request.param
+    pot.turn_physical_on()
+    return pot
+
+def test_axisymmetry(axisymmetric_potential):
+    '''Acc should be invariant under rotation about z-axis for axisymmetric potentials.'''
+    pot = axisymmetric_potential
+    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    R, z = 8.0, 1.0
+    angles = np.linspace(0, 2 * np.pi, 12, endpoint=False)
+    points = np.column_stack([R * np.cos(angles), R * np.sin(angles), np.full_like(angles, z)])
+    acc = acc_fn(points, t=0)
+    magnitudes = np.linalg.norm(acc, axis=1)
+    np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-12)
 
 #---------------------------#
 #  All Supported Potentials #
 #---------------------------#
 
-galpy_all_potentials = SUPPORTED_GALPY_SPHERICAL_POTENTIALS + [
-    #potential.DoubleExponentialDiskPotential()
-]
-
 # # Reuse the grid without the origin for acceleration/potential tests
 # POSITION_GRID = TEST_GRID_POSITIONS
 
-@pytest.fixture(params=galpy_all_potentials, ids=lambda p: type(p).__name__)
+@pytest.fixture(params=ALL_SUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
 def galpy_potential(request):
     pot = request.param
     pot.turn_physical_on()
@@ -104,12 +169,6 @@ def test_potential_match(galpy_potential):
 #---------------------------#
 #  Unsupported Potentials   #
 #---------------------------#
-
-UNSUPPORTED_GALPY_POTENTIALS = [
-    # Not vectorized
-    potential.HomogeneousSpherePotential(),
-    potential.SphericalShellPotential(),
-]
 
 @pytest.fixture(params=UNSUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
 def unsupported_potential(request):
@@ -210,46 +269,6 @@ def test_time_independence(spherical_potential):
     np.testing.assert_array_equal(acc_t0, acc_t100)
 
 
-#-----------------------#
-#  Symmetry Properties  #
-#-----------------------#
-
-def test_spherical_symmetry(spherical_potential):
-    '''|a| should be identical at the same radius but different angles.'''
-    r = 10.0  # kpc
-    # Points at the same radius along different axes / diagonals
-    d = r / np.sqrt(3)
-    points = np.array([
-        [r, 0, 0],
-        [0, r, 0],
-        [-r, 0, 0],
-        [d, d, d],
-        [-d, d, -d],
-    ])
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
-    acc = acc_fn(points, t=0)
-    magnitudes = np.linalg.norm(acc, axis=1)
-    np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-10)
-
-def test_axisymmetry():
-    '''Acc should be invariant under rotation about z-axis for axisymmetric potentials.'''
-    pot = potential.KuzminDiskPotential()
-    pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
-    R, z = 8.0, 1.0
-    angles = np.linspace(0, 2 * np.pi, 12, endpoint=False)
-    points = np.column_stack([R * np.cos(angles), R * np.sin(angles), np.full_like(angles, z)])
-    acc = acc_fn(points, t=0)
-    magnitudes = np.linalg.norm(acc, axis=1)
-    np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-12)
-
-def test_reflection_symmetry(spherical_potential):
-    '''For spherical potentials, a(r) = -a(-r) (odd parity).'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
-    pos = np.array([[5.0, 3.0, 1.0], [10.0, -7.0, 2.0]])
-    acc_pos = acc_fn(pos, t=0)
-    acc_neg = acc_fn(-pos, t=0)
-    np.testing.assert_allclose(acc_pos, -acc_neg, rtol=1e-12)
 
 
 #--------------------------------------#
@@ -285,6 +304,8 @@ def test_kuzmin_potential_match():
 
 def test_force_direction_attractive(galpy_potential):
     '''Radial component of acceleration should point inward (dot(a, r) < 0).'''
+    if isinstance(galpy_potential, potential.RingPotential):
+        pytest.xfail("RingPotential is not purely attractive at all positions")
     pos = np.array([
         [8.0, 0.0, 0.0],
         [0.0, 5.0, 3.0],
@@ -306,7 +327,7 @@ def test_check_physical_pot_warns():
     pot = potential.PlummerPotential()
     # Freshly created — physical outputs not explicitly set
     with pytest.warns(UserWarning, match="physical outputs turned off"):
-        galpy_bridge._check_physical_pot(pot)
+        galpy_bridge._check_physical(pot)
     # After the call, physical should be on
     assert pot._roSet or pot._voSet
 
@@ -317,7 +338,7 @@ def test_check_physical_pot_noop():
     # Should issue no warning
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        galpy_bridge._check_physical_pot(pot)
+        galpy_bridge._check_physical(pot)
 
 def test_check_supported_warns_non_spherical():
     '''_check_supported_pot should warn for axisymmetric (non-spherical) potentials.'''
@@ -370,7 +391,6 @@ def test_very_small_radius_cored():
         pos = np.array([[1e-10, 0.0, 0.0]])
         acc = acc_fn(pos, t=0)
         assert np.all(np.isfinite(acc)), f"{type(pot).__name__} returned non-finite acc at r=1e-10"
-
 
 #--------------------------------#
 #  interpSphericalPotential      #

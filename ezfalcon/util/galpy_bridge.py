@@ -37,6 +37,13 @@ SUPPORTED_POTENTIALS = (
     potential.PseudoIsothermalPotential,
     potential.TwoPowerSphericalPotential,
     potential.KuzminDiskPotential,
+    potential.FlattenedPowerPotential,
+    potential.KuzminDiskPotential,
+    potential.KuzminKutuzovStaeckelPotential,
+    potential.LogarithmicHaloPotential,
+    potential.MiyamotoNagaiPotential,
+    potential.MN3ExponentialDiskPotential,
+    potential.RingPotential,
 )
 
 RMIN = 1e-15 * u.kpc
@@ -47,9 +54,7 @@ def _check_supported_pot(pot):
             f"{type(pot).__name__} is not supported by ezfalconv2. "
             f"Supported potentials: {', '.join(p.__name__ for p in SUPPORTED_POTENTIALS)}"
         )
-    if not isinstance(pot, potential.SphericalPotential.SphericalPotential):
-        warnings.warn(f"More tests needed for axisymmetric potentials.")
-
+    
 def _check_physical(obj):
     if not obj._roSet and not obj._voSet:
         warnings.warn("The provided galpy potential has physical outputs turned off. Using galpy get_physical to determine ro and vo.")
