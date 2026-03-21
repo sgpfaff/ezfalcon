@@ -31,8 +31,8 @@ plt.rcParams['ytick.minor.visible'] = True
 
 from galpy.potential import PlummerPotential
 from galpy.df import isotropicPlummerdf
-from ezfalconv2.util import galpydfsampler
-from ezfalconv2.simulation import Sim
+from ezfalcon.util import galpydfsampler
+from ezfalcon.simulation import Sim
 import astropy.units as u
 
 

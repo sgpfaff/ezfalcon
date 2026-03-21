@@ -9,7 +9,7 @@ import datetime
 # -- Project information -----------------------------------------------------
 
 # The full version, including alpha/beta/rc tags
-from ezfalconv2 import __version__
+from ezfalcon import __version__
 
 release = __version__
 

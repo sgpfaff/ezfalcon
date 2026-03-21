@@ -57,7 +57,7 @@ print(f"Effective galpy dt ≈ {1.0/ndt_est:.4f} Myr = {1000.0/ndt_est:.1f} kyr"
 # Let's also verify: if ezfalcon uses dt=1/32 Myr, does it match galpy?
 print(f"\nIf we run ezfalcon with dt = 1/{int(ndt_est)} Myr:")
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from ezfalconv2.simulation import Sim
+from ezfalcon.simulation import Sim
 
 pos_init = cyl_to_rect(R, phi, z)
 vel_init = (cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Myr).value

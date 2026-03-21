@@ -6,7 +6,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ezfalconv2"
+name = "ezfalcon"
 description = ""
 requires-python = ">=3.9"
 readme = { file = "README.rst", content-type = "text/x-rst" }
@@ -33,14 +33,14 @@ zip-safe = false
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["ezfalconv2*"]
+include = ["ezfalcon*"]
 
 [tool.setuptools_scm]
-version_file = "ezfalconv2/version.py"
+version_file = "ezfalcon/version.py"
 
 [tool.pytest.ini_options]
 testpaths = [
-  "ezfalconv2",
+  "ezfalcon",
   "docs",
 ]
 doctest_plus = "enabled"
@@ -50,20 +50,20 @@ norecursedirs = ["ezfalconv2[\\/]_dev"]
 
 [tool.coverage.run]
 omit = [
- "ezfalconv2/__init*",
- "ezfalconv2/conftest.py",
- "ezfalconv2/*setup_package*",
- "ezfalconv2/tests/*",
- "ezfalconv2/*/tests/*",
- "ezfalconv2/extern/*",
- "ezfalconv2/version*",
- "*/ezfalconv2/__init*",
- "*/ezfalconv2/conftest.py",
- "*/ezfalconv2/*setup_package*",
- "*/ezfalconv2/tests/*",
- "*/ezfalconv2/*/tests/*",
- "*/ezfalconv2/extern/*",
- "*/ezfalconv2/version*",
+ "ezfalcon/__init*",
+ "ezfalcon/conftest.py",
+ "ezfalcon/*setup_package*",
+ "ezfalcon/tests/*",
+ "ezfalcon/*/tests/*",
+ "ezfalcon/extern/*",
+ "ezfalcon/version*",
+ "*/ezfalcon/__init*",
+ "*/ezfalcon/conftest.py",
+ "*/ezfalcon/*setup_package*",
+ "*/ezfalcon/tests/*",
+ "*/ezfalcon/*/tests/*",
+ "*/ezfalcon/extern/*",
+ "*/ezfalcon/version*",
 ]
 
 [tool.coverage.report]

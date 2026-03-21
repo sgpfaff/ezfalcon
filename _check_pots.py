@@ -1,6 +1,6 @@
 import numpy as np, warnings, astropy.units as u
 from functools import partial
-from ezfalconv2.util import galpy as galpy_util
+from ezfalcon.util import galpy as galpy_util
 from galpy.potential import (
     MiyamotoNagaiPotential, LogarithmicHaloPotential,
     FlattenedPowerPotential, MN3ExponentialDiskPotential,
