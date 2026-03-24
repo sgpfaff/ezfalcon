@@ -1,12 +1,26 @@
 import numpy as np
 from ._galpy_bridge import _check_physical
 import astropy.units as u
+from galpy import df
+
+SUPPORTED_GALPY_DFS = (
+    df.isotropicHernquistdf,
+    df.isotropicPlummerdf,
+    df.isotropicNFWdf,
+    df.kingdf,
+    df.eddingtondf
+)
+
+def _check_df(df):
+    '''Currently only spherical galpy dfs are supported.'''
+    if not isinstance(df, SUPPORTED_GALPY_DFS):
+        raise ValueError(f"Unsupported galpy df type: {type(df)}. Supported types: {SUPPORTED_GALPY_DFS}")
 
 def galpydfsampler(df, n, m_total, center_pos=[0, 0, 0], center_vel=[0, 0, 0], vo=220, ro=8.0):
     '''
-    Sample from a galpy distribution function
-    and return ezfalcon compatible positions
-    and velocities.
+    Sample from a galpy spherical distribution 
+    function and return ezfalcon compatible 
+    positions and velocities.
 
     Parameters
     ----------
@@ -30,6 +44,7 @@ def galpydfsampler(df, n, m_total, center_pos=[0, 0, 0], center_vel=[0, 0, 0], v
         Masses of sampled particles.
     '''
     _check_physical(df)
+    _check_df(df)
     o = df.sample(n=n, return_orbit=True)
     pos, vel = galpy_orbit_to_ezfalcon(o)
     pos += np.asarray(center_pos)[:,None].T
