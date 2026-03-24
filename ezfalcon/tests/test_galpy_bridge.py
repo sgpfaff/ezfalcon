@@ -3,7 +3,7 @@ import warnings
 from galpy import potential
 from galpy.util.coords import rect_to_cyl
 import numpy as np
-from ezfalcon.util import galpy_bridge
+from ezfalcon.util import _galpy_bridge
 from itertools import product
 from functools import partial
 from scipy.differentiate import derivative
@@ -48,6 +48,7 @@ SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
     potential.RingPotential(),
     potential.DoubleExponentialDiskPotential(),
     potential.RazorThinExponentialDiskPotential(),
+    potential.interpRZPotential(potential.MWPotential, interpPot=True)
 ]
 
 SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS = [
@@ -65,7 +66,7 @@ SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS = [
     potential.FerrersPotential(),
     potential.NullPotential(),
     potential.SoftenedNeedleBarPotential(),
-    potential.SpiralArmsPotential()
+    potential.SpiralArmsPotential(),
 ]
 
 ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
@@ -73,7 +74,10 @@ ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS +
                                   SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS + 
                                   SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS)
 
-UNSUPPORTED_GALPY_POTENTIALS = []
+UNSUPPORTED_GALPY_POTENTIALS = [
+    potential.DiskSCFPotential(),
+    potential.SCFPotential(),
+]
 
 g = np.linspace(-100, 100, 5)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
@@ -95,7 +99,7 @@ def spherical_potential(request):
     return pot
 
 def test_radial_acc_only(spherical_potential):
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
     acc = acc_fn(TEST_GRID_POSITIONS, t=0)
     assert np.allclose(np.cross(TEST_GRID_POSITIONS, acc), 0, atol=1e-14)
 
@@ -111,14 +115,14 @@ def test_spherical_symmetry(spherical_potential):
         [d, d, d],
         [-d, d, -d],
     ])
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
     acc = acc_fn(points, t=0)
     magnitudes = np.linalg.norm(acc, axis=1)
     np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-10)
 
 def test_reflection_symmetry(spherical_potential):
     '''For spherical potentials, a(r) = -a(-r) (odd parity).'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
     pos = np.array([[5.0, 3.0, 1.0], [10.0, -7.0, 2.0]])
     acc_pos = acc_fn(pos, t=0)
     acc_neg = acc_fn(-pos, t=0)
@@ -138,7 +142,7 @@ def axisymmetric_potential(request):
 def test_axisymmetry(axisymmetric_potential):
     '''Acc should be invariant under rotation about z-axis for axisymmetric potentials.'''
     pot = axisymmetric_potential
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     R, z = 8.0, 1.0
     angles = np.linspace(0, 2 * np.pi, 12, endpoint=False)
     points = np.column_stack([R * np.cos(angles), R * np.sin(angles), np.full_like(angles, z)])
@@ -177,19 +181,20 @@ def _numerical_acc(pot_fn, pos, h=1e-5):
 def test_acceleration_match(galpy_potential):
     '''Compare the acceleration from the galpy potential wrapper to 
     numerical accelerations.'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
-    pot_fn = galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
+    pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     pot_i = partial(pot_fn, t=0)
     acc_bridge = acc_fn(TEST_GRID_POSITIONS, t=0)
     acc_num = _numerical_acc(pot_i, TEST_GRID_POSITIONS)
-    assert np.allclose(acc_bridge, acc_num, rtol=1e-6, atol=1e-10)
+    rtol = 1e-4 if isinstance(galpy_potential, potential.interpRZPotential) else 1e-10
+    assert np.allclose(acc_bridge, acc_num, rtol=rtol, atol=1e-10)
 
 def test_potential_match(galpy_potential):
     '''Compare the potential from the galpy potential wrapper to 
     galpy's own potential evaluation.'''
-    ez_pot_fn = galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
+    ez_pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     ez_pot = ez_pot_fn(FULL_TEST_GRID_POSITIONS, t=0)
-    if isinstance(galpy_potential, galpy_bridge.UNVECTORIZED_POTENTIALS):
+    if isinstance(galpy_potential, _galpy_bridge.UNVECTORIZED_POTENTIALS):
         galpy_pot = np.array([
             galpy_potential(R, z, phi=p, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
             for R, z, p in zip(FULL_TEST_R, FULL_TEST_Z, FULL_TEST_PHI)
@@ -210,7 +215,7 @@ def triaxial_potential(request):
 
 def test_triaxial_reflection_symmetry(triaxial_potential):
     '''For triaxial potentials centered at origin, a(r) = -a(-r).'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
     pos = np.array([[5.0, 3.0, 1.0], [10.0, -7.0, 2.0]])
     acc_pos = acc_fn(pos, t=0)
     acc_neg = acc_fn(-pos, t=0)
@@ -218,7 +223,7 @@ def test_triaxial_reflection_symmetry(triaxial_potential):
 
 def test_triaxial_plane_symmetry(triaxial_potential):
     '''Reflecting through a coordinate plane flips only that force component.'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(triaxial_potential)
     pos = np.array([[5.0, 3.0, 2.0]])
     acc = acc_fn(pos, t=0)
     for axis in range(3):
@@ -247,7 +252,7 @@ def unsupported_potential(request):
 
 def test_identify_unsupported_potential(unsupported_potential):
     with pytest.raises(TypeError):
-        galpy_bridge._check_supported_pot(unsupported_potential)
+        _galpy_bridge._check_supported_pot(unsupported_potential)
 
 
 #-----------------------#
@@ -266,7 +271,7 @@ def test_acc_units():
     r = 0.1 # kpc
     pos = np.array([[r, 0.0, 0.0]])  # 10 kpc along x
     expected_ax = -G_INTERNAL * M_msun / r**2
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     acc = acc_fn(pos, t=0)
     assert acc.shape == (1, 3)
     np.testing.assert_allclose(acc[0, 0], expected_ax, rtol=1e-8)
@@ -284,7 +289,7 @@ def test_pot_units():
     r = 0.1 # kpc
     pos = np.array([[r, 0.0, 0.0]])
     expected_phi = -G_INTERNAL * M_msun / r
-    pot_fn = galpy_bridge._galpy_pot_to_pot_fn(pot)
+    pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(pot)
     phi = pot_fn(pos, t=0)
     np.testing.assert_allclose(phi[0], expected_phi, rtol=1e-8)
 
@@ -297,7 +302,7 @@ def test_single_particle_acc_shape():
     '''acc_fn should accept a (1,3) array and return (1,3).'''
     pot = potential.PlummerPotential()
     pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     acc = acc_fn(pos, t=0)
     assert acc.shape == (1, 3)
@@ -307,7 +312,7 @@ def test_single_particle_pot_shape():
     '''pot_fn should accept a (1,3) array and return a (1,) array.'''
     pot = potential.PlummerPotential()
     pot.turn_physical_on()
-    pot_fn = galpy_bridge._galpy_pot_to_pot_fn(pot)
+    pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     phi = pot_fn(pos, t=0)
     assert phi.shape == (1,)
@@ -321,7 +326,7 @@ def test_large_batch():
     pos = rng.uniform(-50, 50, size=(10_000, 3))
     # Avoid z-axis
     pos[np.abs(pos[:, 0]) < 0.01, 0] = 0.01
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     acc = acc_fn(pos, t=0)
     assert acc.shape == (10_000, 3)
     assert np.all(np.isfinite(acc))
@@ -333,7 +338,7 @@ def test_large_batch():
 
 def test_time_independence(spherical_potential):
     '''For static potentials, acc should not depend on t.'''
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
     pos = np.array([[8.0, 0.0, 1.0], [3.0, 4.0, 0.0]])
     acc_t0 = acc_fn(pos, t=0)
     acc_t100 = acc_fn(pos, t=100)
@@ -360,7 +365,7 @@ def test_force_direction_attractive(general_galpy_potential):
         [3.0, -4.0, 1.0],
         [-2.0, -2.0, -2.0],
     ])
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(general_galpy_potential)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(general_galpy_potential)
     acc = acc_fn(pos, t=0)
     dots = np.sum(pos * acc, axis=1)
     assert np.all(dots < 0), f"Expected all dot products < 0, got {dots}"
@@ -374,7 +379,7 @@ def test_check_physical_pot_warns():
     pot = potential.PlummerPotential()
     # Freshly created — physical outputs not explicitly set
     with pytest.warns(UserWarning, match="physical outputs turned off"):
-        galpy_bridge._check_physical(pot)
+        _galpy_bridge._check_physical(pot)
     # After the call, physical should be on
     assert pot._roSet or pot._voSet
 
@@ -385,13 +390,13 @@ def test_check_physical_pot_noop():
     # Should issue no warning
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        galpy_bridge._check_physical(pot)
+        _galpy_bridge._check_physical(pot)
 
 def test_check_supported_warns_non_vectorized():
     '''_check_supported_pot should warn for non-vectorized potentials.'''
     pot = potential.HomogeneousSpherePotential()
     with pytest.warns(UserWarning, match="not vectorized"):
-        galpy_bridge._check_supported_pot(pot)
+        _galpy_bridge._check_supported_pot(pot)
 
 #--------------#
 #  Edge Cases  #
@@ -401,7 +406,7 @@ def test_z_axis_nan():
     '''Positions on the z-axis (R=0) should produce NaN — documenting the known galpy singularity.'''
     pot = potential.NFWPotential()
     pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     pos = np.array([[0.0, 0.0, 5.0]])
     acc = acc_fn(pos, t=0)
     assert np.any(np.isnan(acc)), "Expected NaN on z-axis due to galpy R=0 singularity"
@@ -410,7 +415,7 @@ def test_very_large_radius():
     '''Bridge should return finite values at very large radii.'''
     pot = potential.NFWPotential()
     pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     radii = [1e3, 1e4, 1e5]
     for r in radii:
         pos = np.array([[r, 0.0, 0.0]])
@@ -434,7 +439,7 @@ def test_very_small_radius_cored():
     ]
     for pot in cored_pots:
         pot.turn_physical_on()
-        acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+        acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
         pos = np.array([[1e-10, 0.0, 0.0]])
         acc = acc_fn(pos, t=0)
         assert np.all(np.isfinite(acc)), f"{type(pot).__name__} returned non-finite acc at r=1e-10"
@@ -452,7 +457,7 @@ def test_interp_spherical_outside_grid():
         Phi0=0.,
     )
     pot.turn_physical_on()
-    acc_fn = galpy_bridge._galpy_pot_to_acc_fn(pot)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     # r=50 is outside the grid (max=20)
     pos = np.array([[50.0, 0.0, 0.0]])
     acc = acc_fn(pos, t=0)

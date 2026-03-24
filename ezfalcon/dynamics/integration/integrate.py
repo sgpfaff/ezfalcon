@@ -87,7 +87,7 @@ def integrate(pos, vel, mass,
     i_out = 1
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
         # Drift
-        pos_half, _ = leapfrog_drift(pos, vel, dt/2)
+        pos_half = leapfrog_drift(pos, vel, dt/2)
 
         # Kick
         acc = np.zeros_like(vel)
@@ -99,10 +99,10 @@ def integrate(pos, vel, mass,
             ext_acc += fn(pos_half, t=t - dt/2)
         acc += ext_acc
 
-        _, vel = leapfrog_kick(pos_half, vel, acc, dt)
+        vel = leapfrog_kick(vel, acc, dt)
 
         # Drift
-        pos, _ = leapfrog_drift(pos_half, vel, dt/2)
+        pos = leapfrog_drift(pos_half, vel, dt/2)
 
         if step % steps_per_output == 0 and i_out < nsnaps:
             positions[i_out] = pos.copy()

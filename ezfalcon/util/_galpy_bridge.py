@@ -48,7 +48,8 @@ SUPPORTED_POTENTIALS = (
     potential.RingPotential,
     # TRIAXIAL POTENTIALS
     potential.DehnenBarPotential,
-    potential.SpiralArmsPotential
+    potential.SpiralArmsPotential,
+    potential.interpRZPotential,
 )
 
 UNVECTORIZED_POTENTIALS = (

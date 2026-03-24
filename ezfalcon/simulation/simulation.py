@@ -9,7 +9,7 @@ import numpy as np
 from .component import Component
 from ..dynamics import integrate, self_gravity
 import galpy
-from ..util.galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
+from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
 
 class Sim:
     """
@@ -256,7 +256,7 @@ class Sim:
         Percent change in total energy over the simulation time.
         Units:  Msun kpc²/Myr²
         '''
-        Es = np.array([self.system_energy(t=t) for t in self.times])
+        Es = np.array([self.system_energy(t=i) for i in range(len(self.times))])
         return np.abs((Es - Es[0]) / Es[0])
     
     def add_external_pot(self, name, pot):
@@ -271,14 +271,16 @@ class Sim:
         else:
             raise TypeError("External potential must be a galpy Potential object.")
     
+
+    def compute_self_gravity(self, eps, theta, t=...):
+        '''
+        Compute the self-gravity acceleration of each particle in the component at time t.
+        '''
+        return self_gravity(self.pos(t=t), self.mass, eps=eps, theta=theta)[0]
+    
+
     ### Acceleration Accessors ###
 
-    # def compute_self_gravity(self, eps, theta, t=...):
-    #     '''
-    #     Self-gravity acceleration of each particle in the component at time t.
-    #     '''
-    #     return self_gravity(self.pos(t=t), self.mass, eps=eps, theta=theta)[0]
-    
     def self_gravity_acc(self, t=...):
         '''
         Self-gravity acceleration of each particle in the component at time t,
@@ -345,10 +347,11 @@ class Sim:
     def turn_self_gravity_off(self):
         self._self_gravity_on = False
 
-    def plot_diagnostic(self):
+    def plot_diagnostic(self, all_components=True):
         import matplotlib.pyplot as plt
         plt.figure(figsize=(6,4))
-        plt.plot(self.times, self.dE(), c='k')
+        dE = self.dE()
+        plt.plot(self.times, dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Myr)")
         plt.ylabel("$|\Delta E / E_0|$")

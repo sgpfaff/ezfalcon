@@ -110,13 +110,14 @@ class Component:
         """
         return self.KE(t=t).sum() + 0.5 * self.self_PE(t=t).sum()
     
-    def percent_dE(self, t2, t1=0.0):
-        '''
-        Percent change in total energy of between times t1 and t2.
-        Units:  Msun kpc²/Myr²
-        '''
-        return (self.system_energy(t=t2) - self.system_energy(t=t1)) / np.abs(self.system_energy(t=t1)) * 100.0
-    
+    # def dE(self):
+    #     '''
+    #     Percent change in total energy over the simulation time.
+    #     Units:  Msun kpc²/Myr²
+    #     '''
+    #     Es = np.array([self.system_energy(t=i) for i in range(len(self._sim.times))])
+    #     return np.abs((Es - Es[0]) / Es[0])
+
     @property
     def mass(self):
         return self._sim._mass[self._sl]
