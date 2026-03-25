@@ -26,9 +26,9 @@ def self_gravity(pos, mass, eps, theta=0.6):
     -------
     acc : (N, 3) array
         Accelerations.
-        Unit: kpc/Myr² (internal units)
+        Unit: kpc / Myr^2 (internal units)
     pot : (N,) array
         Gravitational potential.
-        Unit: kpc²/Myr² (internal units)
+        Unit: kpc^2 / Myr^2 (internal units)
     """
     return pyfalcon.gravity(pos, mass * G_INTERNAL, eps, theta=theta)
