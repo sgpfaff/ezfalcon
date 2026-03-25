@@ -44,13 +44,13 @@ def integrate(pos, vel, mass,
         Units: kpc
     velocities : (nsnaps, N, 3) array
         Velocities at each output snapshot.
-        Units: kpc/Myr
+        Units: kpc / Myr
     self_accelerations : (nsnaps, N, 3) array
         Self-gravity accelerations at each output snapshot.
-        Units: kpc/Myr²
+        Units: kpc / Myr^2
     self_potentials : (nsnaps, N) array
         Self-gravity potentials at each output snapshot.
-        Units: kpc²/Myr²
+        Units: kpc^2 / Myr^2
     ts : (nsnaps,) array
         Times of each output snapshot.
         Units: Myr

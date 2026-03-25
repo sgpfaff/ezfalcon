@@ -151,8 +151,6 @@ def test_axisymmetry(axisymmetric_potential):
     np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-12)
 
 
-
-
 #---------------------------#
 #  All Supported Potentials #
 #---------------------------#
