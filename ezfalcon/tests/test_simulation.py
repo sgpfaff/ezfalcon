@@ -319,8 +319,6 @@ def test_component_accessor_shapes_after_run():
 
 
 
-
-
 ### Test energy methods ###
 
 BINARY_TEST_POS, BINARY_TEST_VELS, BINARY_TEST_MASS = (
@@ -411,8 +409,6 @@ def test_add_external_pot_rejection():
     sim = Sim()
     with pytest.raises(TypeError, match="External potential must be a galpy Potential object."):
         sim.add_external_pot("not a potential", lambda pos, t: pos)
-        
-
 
 
 ### test external acceleration accessors ###
@@ -469,3 +465,4 @@ def test_dE():
     E1 = KEPLER_SIM.system_energy(t=1)
     dE = KEPLER_SIM.dE()
     assert np.all(np.isclose(E1 - E0, dE, rtol=1e-10))
+
