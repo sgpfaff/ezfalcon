@@ -19,11 +19,9 @@ plt.rcParams.update({
 from matplotlib.animation import FuncAnimation
 from IPython.display import HTML
 
-
-
-def create_shell(n, df, host_pot):
+def create_shell(n, df, host_pot, m_total):
     shell = Sim()
-    pos, vel, mass = galpydfsampler(df=df, n=n, m_total=1e9, center_pos=[25, 0, 0], center_vel=[0, 0, 0])
+    pos, vel, mass = galpydfsampler(df=df, n=n, m_total=m_total, center_pos=[25, 0, 0], center_vel=[0, 0, 0])
     shell.add_particles('all', pos=pos, vel=vel, mass=mass)
     shell.add_external_pot('host', host_pot)
     return shell
@@ -61,18 +59,17 @@ def calculate_star_mask(vel, mass, self_PE):
     sorted_binding_indices = np.argsort(binding)
     return sorted_binding_indices[:int(0.1*len(binding))]
     
-
 def make_animation(x, y, times, filename, mask=None, label1='', label2=''):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     def animate(i):
         ax.clear()
         if mask is not None:
-            ax.scatter(x[i][~mask[i]], y[i][~mask[i]], s=2, c='k', alpha=0.25, label=label1)
-            ax.scatter(x[i][mask[i]], y[i][mask[i]], s=1, c='k', label=label2)
-            ax.legend(loc='upper right', markerscale=5)
+            ax.scatter(x[i][~mask[i]], y[i][~mask[i]], s=0.01, c='r', alpha=0.1, label=label1)
+            ax.scatter(x[i][mask[i]], y[i][mask[i]], s=0.01, alpha=0.1, c='k', label=label2)
+            ax.legend(loc='upper right', markerscale=10)
         else:
-            ax.scatter(x[i], y[i], s=1, c='k')
+            ax.scatter(x[i], y[i], s=0.05, alpha=0.1, c='k')
 
         ax.set_xlim(-60, 60)
         ax.set_ylim(-60, 60)
@@ -82,14 +79,14 @@ def make_animation(x, y, times, filename, mask=None, label1='', label2=''):
         
 
     anim = FuncAnimation(fig, animate, frames=len(times), interval=100)
-    anim.save(f'script_output/{filename}.mp4', writer='ffmpeg', fps=2)
+    anim.save(f'script_output/{filename}.mp4', writer='ffmpeg', fps=10)
     plt.close(fig)
 
-def __main__(n=1000, t_end = 100, dt=1., dt_out=10, eps=0.01, theta=0.001):
-    host_pot = NFWPotential(amp=1e12 * u.Msun, a=20*u.kpc)
-    sat_pot = PlummerPotential(amp=1e9 * u.Msun, b=1*u.kpc)
+def __main__(n=100_000, t_end = 1000, dt=0.1, dt_out=10., eps=0.1, theta=0.5):
+    host_pot = NFWPotential(amp=1e13 * u.Msun, a=20*u.kpc)
+    sat_pot = PlummerPotential(amp=1e10 * u.Msun, b=2*u.kpc)
     df = isotropicPlummerdf(pot = sat_pot)
-    shell = create_shell(n=n, df=df, host_pot=host_pot)
+    shell = create_shell(n=n, df=df, host_pot=host_pot, m_total=1e10)
     prog = create_prog_orbit(shell, host_pot)
 
     shell.run(t_end=t_end, dt=dt, dt_out=dt_out, eps=eps, theta=theta)
@@ -111,9 +108,10 @@ def __main__(n=1000, t_end = 100, dt=1., dt_out=10, eps=0.01, theta=0.001):
     np.save('script_output/data/star_mask.npy', star_mask)
 
     shell.plot_diagnostic('script_output/energy_conservation.png')
+
     make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/all_pts')
     make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/bound_unbound', mask=mask, label1='unbound', label2='bound')
-    make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/stars', mask=star_mask, label1='DM', label2='stars')
+    make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/stars_DM', mask=np.repeat(star_mask, len(shell.times), axis=0).reshape(-1, len(shell.times)).T, label1='DM', label2='stars')
     make_animation(shell.pos()[:,star_mask,0], shell.pos()[:,star_mask,1], shell.times, 'anims/stars_only')
 
 if __name__ == '__main__':

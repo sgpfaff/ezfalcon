@@ -37,7 +37,6 @@ SUPPORTED_POTENTIALS = (
     potential.PowerSphericalPotentialwCutoff,
     potential.PseudoIsothermalPotential,
     potential.TwoPowerSphericalPotential,
-    potential.KuzminDiskPotential,
     # AXISYMMETRIC POTENTIALS
     potential.FlattenedPowerPotential,
     potential.KuzminDiskPotential,
