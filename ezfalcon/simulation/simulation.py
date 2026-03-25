@@ -716,7 +716,17 @@ class Sim:
         '''        
         return self.external_acc(t=t)[:, 2]
     
-    def plot_diagnostic(self):
+    def plot_diagnostic(self, filename=None):
+        '''
+        Plot global energy conservation as a function of 
+        time.
+        
+        Parameters
+        ----------
+        filename : str, optional
+            If provided, will save the plot to the given filename
+            instead of showing it.
+        '''
         import matplotlib.pyplot as plt
         plt.figure(figsize=(6,4))
         dE = self.dE()
@@ -725,7 +735,10 @@ class Sim:
         plt.xlabel("Time (Myr)")
         plt.ylabel("$|\Delta E / E_0|$")
         plt.title("Energy Conservation")
-        plt.show()
+        if filename is not None:
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+        else:
+            plt.show()
     
     def relax(self, components, t_end, dt, eps, theta=0.6, force_center=True):
         '''

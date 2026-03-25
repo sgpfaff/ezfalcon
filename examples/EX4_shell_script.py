@@ -5,6 +5,19 @@ from ezfalcon.simulation import Sim
 from ezfalcon.util import galpydfsampler
 import astropy.units as u
 import numpy as np
+import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+    'xtick.direction': 'in', 'ytick.direction': 'in',
+    'font.size': 14, 'axes.labelsize': 16,
+    'xtick.major.width': 1.5, 'ytick.major.width': 1.5,
+    'ytick.right': True, 'xtick.top': True,
+    'mathtext.fontset': 'stix',
+    'xtick.minor.visible': True, 'ytick.minor.visible': True,
+})
+
+from matplotlib.animation import FuncAnimation
+from IPython.display import HTML
 
 
 
@@ -22,8 +35,6 @@ def create_prog_orbit(shell, host_pot):
     prog.add_external_pot('host', host_pot)
     prog.turn_self_gravity_off()
     return prog
-
-
 
 def calculate_bound(pos, vel, mass, self_pot, center_pos, center_vel):
     '''
@@ -50,6 +61,30 @@ def calculate_star_mask(vel, mass, self_PE):
     sorted_binding_indices = np.argsort(binding)
     return sorted_binding_indices[:int(0.1*len(binding))]
     
+
+def make_animation(x, y, times, filename, mask=None, label1='', label2=''):
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    def animate(i):
+        ax.clear()
+        if mask is not None:
+            ax.scatter(x[i][~mask[i]], y[i][~mask[i]], s=2, c='k', alpha=0.25, label=label1)
+            ax.scatter(x[i][mask[i]], y[i][mask[i]], s=1, c='k', label=label2)
+            ax.legend(loc='upper right', markerscale=5)
+        else:
+            ax.scatter(x[i], y[i], s=1, c='k')
+
+        ax.set_xlim(-60, 60)
+        ax.set_ylim(-60, 60)
+        ax.set_xlabel('x [kpc]')
+        ax.set_ylabel('y [kpc]')
+        ax.set_title(f't = {times[i]:.0f} Myr')
+        
+
+    anim = FuncAnimation(fig, animate, frames=len(times), interval=100)
+    anim.save(f'script_output/{filename}.mp4', writer='ffmpeg', fps=2)
+    plt.close(fig)
+
 def __main__(n=1000, t_end = 100, dt=1., dt_out=10, eps=0.01, theta=0.001):
     host_pot = NFWPotential(amp=1e12 * u.Msun, a=20*u.kpc)
     sat_pot = PlummerPotential(amp=1e9 * u.Msun, b=1*u.kpc)
@@ -67,14 +102,19 @@ def __main__(n=1000, t_end = 100, dt=1., dt_out=10, eps=0.01, theta=0.001):
 
     star_mask = calculate_star_mask(shell.vel(0), shell.mass, shell.self_PE(0))
 
-    np.save('script_output/bound_mask.npy', mask)
-    np.save('script_output/shell_pos.npy', shell.pos())
-    np.save('script_output/shell_vel.npy', shell.vel())
-    np.save('script_output/shell_mass.npy', shell.mass)
-    np.save('script_output/times.npy', shell.times)
-    np.save('script_output/self_PE.npy', shell.self_PE())
-    np.save('script_output/star_mask.npy', star_mask)
+    np.save('script_output/data/bound_mask.npy', mask)
+    np.save('script_output/data/shell_pos.npy', shell.pos())
+    np.save('script_output/data/shell_vel.npy', shell.vel())
+    np.save('script_output/data/shell_mass.npy', shell.mass)
+    np.save('script_output/data/times.npy', shell.times)
+    np.save('script_output/data/self_PE.npy', shell.self_PE())
+    np.save('script_output/data/star_mask.npy', star_mask)
 
+    shell.plot_diagnostic('script_output/energy_conservation.png')
+    make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/all_pts')
+    make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/bound_unbound', mask=mask, label1='unbound', label2='bound')
+    make_animation(shell.pos()[:,:,0], shell.pos()[:,:,1], shell.times, 'anims/stars', mask=star_mask, label1='DM', label2='stars')
+    make_animation(shell.pos()[:,star_mask,0], shell.pos()[:,star_mask,1], shell.times, 'anims/stars_only')
 
 if __name__ == '__main__':
     __main__()
