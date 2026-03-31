@@ -27,14 +27,14 @@ def create_shell(n, df, host_pot, m_total, center_pos, center_vel):
     shell = Sim()
     pos, vel, mass = galpydfsampler(df=df, n=n, m_total=m_total, center_pos=center_pos, center_vel=center_vel)
     shell.add_particles('all', pos=pos, vel=vel, mass=mass)
-    shell.add_external_pot('host', host_pot)
+    shell.add_external_pot(host_pot)
     return shell
 
 def create_prog_orbit(shell, host_pot):
     init_center_pos, init_center_vel = np.median(shell.pos(0), axis=0), np.median(shell.vel(0), axis=0)
     prog = Sim()
     prog.add_particles('prog', pos=init_center_pos[None,:], vel=init_center_vel[None,:], mass=np.array([1e9]))
-    prog.add_external_pot('host', host_pot)
+    prog.add_external_pot(host_pot)
     prog.turn_self_gravity_off()
     return prog
 

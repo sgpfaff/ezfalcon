@@ -404,11 +404,13 @@ def test_self_ay_spot_check():
 def test_self_az_spot_check():
     assert np.all(np.isclose(BINARY_TEST_SIM.self_az(t=0), SELF_GRAVITY_TEST[2], rtol=1e-10))
 
+
 ### test .add_external_pot() ###
+
 def test_add_external_pot_rejection():
     sim = Sim()
     with pytest.raises(TypeError, match="External potential must be a galpy Potential object."):
-        sim.add_external_pot("not a potential", lambda pos, t: pos)
+        sim.add_external_pot(lambda pos, t: pos)
 
 
 ### test external acceleration accessors ###
@@ -425,7 +427,7 @@ def test_external_acc_zero_without_pot():
 KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
 kepler_pot = KeplerPotential(amp=1.0*u.Msun)
-KEPLER_SIM.add_external_pot('kepler', kepler_pot)
+KEPLER_SIM.add_external_pot(kepler_pot)
 KEPLER_SIM.add_particles('a', pos=np.array([[0.1, 0.1, 0.1]]), vel=np.array([[0, 0.1, 0]]), mass=np.array([0.01]))
 KEPLER_ACC = -G_INTERNAL * 1.0 * 0.01 * np.array([[0.1, 0.1, 0.1]]) / (0.1**2 + 0.1**2 + 0.1**2)**(3/2)
 KEPLER_POT = -G_INTERNAL * 1.0 * 0.01 / np.sqrt(0.1**2 + 0.1**2 + 0.1**2)
@@ -466,3 +468,42 @@ def test_dE():
     dE = KEPLER_SIM.dE()
     assert np.all(np.isclose(E1 - E0, dE, rtol=1e-10))
 
+### Test .run method ###
+def test_negative_dt():
+    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=-0.1, 
+                  dt_out=0.1,
+                  eps=1.0,
+                  theta=0.5)
+
+def test_negative_dt_out():
+    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.1, 
+                  dt_out=-0.1,
+                  eps=1.0,
+                  theta=0.5)
+
+def test_negative_t_end():
+    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
+        KEPLER_SIM.run(
+                  t_end=-1.0, 
+                  dt=0.1, 
+                  dt_out=0.1,
+                  eps=1.0,
+                  theta=0.5)
+
+def test_dt_out_less_than_dt():
+    with pytest.raises(ValueError, match="dt_out must be greater than or equal to dt."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.1, 
+                  dt_out=0.05,
+                  eps=1.0,
+                  theta=0.5)
+        
+
+### Test conservation of energy with single orbit in external galpy potential ###

@@ -1,1 +1,1 @@
-from .integrate import integrate
+from .integrate import _integrate

@@ -3,7 +3,7 @@ from ..acceleration import self_gravity
 import numpy as np
 from tqdm import tqdm
 
-def integrate(pos, vel, mass, 
+def _integrate(pos, vel, mass, 
               include_self_gravity,
               extra_acc,
               t_end, dt, dt_out, 
@@ -25,7 +25,7 @@ def integrate(pos, vel, mass,
         Units: Msun
     include_self_gravity : bool
         Whether to include self-gravity in the integration.
-    extra_acc : array_like of functions
+    extra_acc : list of callables
         Additional accelerations to be added to the self-gravity accelerations.
     t_end : float
         End time of integration.
@@ -55,25 +55,7 @@ def integrate(pos, vel, mass,
         Times of each output snapshot.
         Units: Myr
     '''
-    pos = np.asarray(pos, dtype=np.float64)
-    vel = np.asarray(vel, dtype=np.float64)
-    mass = np.asarray(mass, dtype=np.float64)
 
-    if pos.ndim != 2 or pos.shape[1] != 3:
-        raise ValueError(f"pos must be a (N, 3) array, has shape {pos.shape}.")
-    if vel.ndim != 2 or vel.shape[1] != 3:
-        raise ValueError(f"vel must be a (N, 3) array, has shape {vel.shape}.")
-    if mass.ndim != 1:
-        raise ValueError(f"mass must be a (N,) array, has shape {mass.shape}.")
-    if (vel.shape[0] != pos.shape[0]) or (vel.shape[0] != mass.shape[0]) or (pos.shape[0] != mass.shape[0]):
-        raise ValueError("pos, vel, and mass must have the same number of particles.")
-    if dt <= 0 or dt_out <= 0 or t_end <= 0:
-        raise ValueError("dt, dt_out, and t_end must be positive.")
-    if dt_out < dt:
-        raise ValueError("dt_out must be greater than or equal to dt.")
-    if dt_out % dt > 1e-8:
-        raise ValueError("dt_out must be an integer multiple of dt.")
-    
     ts_out = np.arange(0, t_end + dt_out, dt_out)
     nsnaps = len(ts_out)
     ts_integrate = np.arange(0, t_end + dt, dt)
@@ -95,12 +77,13 @@ def integrate(pos, vel, mass,
         self_accelerations[0] = self_acc.copy()
         self_potentials[0] = self_pot.copy()
 
-    for fn in extra_acc.values():
+    for fn in extra_acc:
         ext_acc += fn(pos, t=0)
     acc += ext_acc
 
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
+
 
     i_out = 1
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
@@ -113,7 +96,7 @@ def integrate(pos, vel, mass,
         if include_self_gravity:
             self_acc, self_pot = self_gravity(pos_half, mass, eps, theta=theta)
             acc += self_acc
-        for fn in extra_acc.values():
+        for fn in extra_acc:
             ext_acc += fn(pos_half, t=t - dt/2)
         acc += ext_acc
 

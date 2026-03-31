@@ -2,12 +2,9 @@
 Simulation class for ezfalcon.
 """
 
-import time
-
 import numpy as np
-# from ..util import accept_vel, return_vel, G_INTERNAL
 from .component import Component
-from ..dynamics import integrate, self_gravity
+from ..dynamics import _integrate, self_gravity
 import galpy
 from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
 
@@ -42,8 +39,8 @@ class Sim:
         self._times = None        # (n_snap,) Myr
         self._has_run = False
         self._self_gravity_on = True
-        self._ext_acc_fns = {}     # list of functions that take (pos, t) and return (N, 3) acc
-        self._ext_pot_fns = {}
+        self._ext_acc_fns = []     # list of functions that take (pos, t) and return (N, 3) acc
+        self._ext_pot_fns = []
 
     # ------------------------------------------------------------------ #
     #  Time index resolution                                              #
@@ -134,9 +131,14 @@ class Sim:
         """
         Run the simulation to *t_end* [Myr].
         """
+        if dt <= 0 or dt_out <= 0 or t_end <= 0:
+            raise ValueError("dt, dt_out, and t_end must be positive.")
+        if dt_out < dt:
+            raise ValueError("dt_out must be greater than or equal to dt.")
+        
         (self._positions, self._velocities,
          self._self_acc, self._self_pot, 
-         self._times) = integrate(self._init_pos, self._init_vel, self._mass,
+         self._times) = _integrate(self._init_pos, self._init_vel, self._mass,
                                   self._self_gravity_on, self._ext_acc_fns,
                                   t_end, dt, dt_out, eps, theta=theta)
         self._has_run = True
@@ -345,7 +347,7 @@ class Sim:
             Units: kpc^2 / Myr^2
         '''
         ext_pot = np.zeros(self._mass.shape[0])
-        for fn in self._ext_pot_fns.values():
+        for fn in self._ext_pot_fns:
             ext_pot += fn(self.pos(t=t), t=t)
         return ext_pot
 
@@ -473,7 +475,7 @@ class Sim:
         Es = np.array([self.system_energy(t=i) for i in range(len(self.times))])
         return np.abs((Es - Es[0]) / Es[0])
     
-    def add_external_pot(self, name, pot):
+    def add_external_pot(self, pot):
         '''
         Add an external potential to the simulation.
 
@@ -487,8 +489,8 @@ class Sim:
         if isinstance(pot, galpy.potential.Potential):
             _check_supported_pot(pot)
             _check_physical(pot)
-            self._ext_pot_fns[name] = _galpy_pot_to_pot_fn(pot)
-            self._ext_acc_fns[name] = _galpy_pot_to_acc_fn(pot)
+            self._ext_pot_fns.append(_galpy_pot_to_pot_fn(pot))
+            self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
         else:
             raise TypeError("External potential must be a galpy Potential object.")
     
@@ -646,7 +648,7 @@ class Sim:
             Units: kpc / Myr^2
         '''
         ext_acc = np.zeros_like(self._velocities[self._ti(t)])
-        for fn in self._ext_acc_fns.values():
+        for fn in self._ext_acc_fns:
             ext_acc += fn(self.pos(t=t), t=t)
         return ext_acc
     

@@ -3,6 +3,7 @@ import numpy as np
 
 
 #### Test leapfrog functions ####
+
 from ezfalcon.dynamics.integration import leapfrog
 def test_leapfrog_kick():
     vel = np.array([[1.0, 0.0, 0.0]])
@@ -20,7 +21,7 @@ def test_leapfrog_drift():
 
 #### Test integration function ####
 
-from ezfalcon.dynamics.integration import integrate
+from ezfalcon.dynamics.integration import _integrate
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
 from ezfalcon.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from ezfalcon.simulation import Sim
@@ -37,7 +38,7 @@ pot.turn_physical_on()
 pos = np.array([cyl_to_rect(R, phi, z)])
 vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Myr).value])
 acc_fn = _galpy_pot_to_acc_fn(pot)
-pos_out, vel_out, _, _, ts_out = integrate(pos, vel, np.array([1.]), False, {'host': acc_fn}, t_end.value, dt.value, dt.value, eps=0.0)
+pos_out, vel_out, _, _, ts_out = _integrate(pos, vel, np.array([1.]), False, [acc_fn], t_end.value, dt.value, dt.value, eps=0.0)
 
 pot_fn = _galpy_pot_to_pot_fn(pot)
 nsnaps, npart = vel_out.shape[:2]
@@ -86,122 +87,3 @@ def test_energy_against_galpy():
 def test_Lz_against_galpy():
     Lz_galpy = o_galpy.Lz(ts, quantity=True).to(u.kpc*u.kpc/u.Myr).value
     np.testing.assert_allclose(Lz_out, Lz_galpy, rtol=1e-9), "Angular momentum does not match galpy output."
-
-### Shape tests
-
-def test_pos_input_shape():
-    with pytest.raises(ValueError, match="pos must be a \(N, 3\) array, has shape \(2,\)."):
-        integrate(pos=np.array([0, 0]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-def test_vel_input_shape():
-    with pytest.raises(ValueError, match="vel must be a \(N, 3\) array, has shape \(2,\)."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([0, 0]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-        
-def test_mass_input_shape():
-    with pytest.raises(ValueError, match="mass must be a \(N,\) array, has shape \(1, 1\)."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([[1.]]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-def test_mismatched_particle_numbers():
-    with pytest.raises(ValueError, match="pos, vel, and mass must have the same number of particles."):
-        integrate(pos=np.array([[0, 0, 0], [1, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1., 2, 3, 5]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-        
-def test_negative_dt():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=-0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-
-def test_negative_dt_out():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=-0.1,
-                  eps=1.0,
-                  theta=0.5)
-
-def test_negative_t_end():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=-1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
-
-def test_dt_out_less_than_dt():
-    with pytest.raises(ValueError, match="dt_out must be greater than or equal to dt."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.05,
-                  eps=1.0,
-                  theta=0.5)
-
-def test_dt_out_not_multiple_of_dt():
-    with pytest.raises(ValueError, match="dt_out must be an integer multiple of dt."):
-        integrate(pos=np.array([[0, 0, 0]]), 
-                  vel=np.array([[0, 0, 0]]), 
-                  mass=np.array([1.]), 
-                  include_self_gravity=False, 
-                  extra_acc={},
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.15,
-                  eps=1.0,
-                  theta=0.5)
-        
-    
