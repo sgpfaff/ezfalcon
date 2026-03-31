@@ -55,7 +55,25 @@ def integrate(pos, vel, mass,
         Times of each output snapshot.
         Units: Myr
     '''
+    pos = np.asarray(pos, dtype=np.float64)
+    vel = np.asarray(vel, dtype=np.float64)
+    mass = np.asarray(mass, dtype=np.float64)
 
+    if pos.ndim != 2 or pos.shape[1] != 3:
+        raise ValueError(f"pos must be a (N, 3) array, has shape {pos.shape}.")
+    if vel.ndim != 2 or vel.shape[1] != 3:
+        raise ValueError(f"vel must be a (N, 3) array, has shape {vel.shape}.")
+    if mass.ndim != 1:
+        raise ValueError(f"mass must be a (N,) array, has shape {mass.shape}.")
+    if (vel.shape[0] != pos.shape[0]) or (vel.shape[0] != mass.shape[0]) or (pos.shape[0] != mass.shape[0]):
+        raise ValueError("pos, vel, and mass must have the same number of particles.")
+    if dt <= 0 or dt_out <= 0 or t_end <= 0:
+        raise ValueError("dt, dt_out, and t_end must be positive.")
+    if dt_out < dt:
+        raise ValueError("dt_out must be greater than or equal to dt.")
+    if dt_out % dt > 1e-8:
+        raise ValueError("dt_out must be an integer multiple of dt.")
+    
     ts_out = np.arange(0, t_end + dt_out, dt_out)
     nsnaps = len(ts_out)
     ts_integrate = np.arange(0, t_end + dt, dt)
@@ -113,19 +131,3 @@ def integrate(pos, vel, mass,
             i_out += 1
 
     return (positions, velocities, self_accelerations, self_potentials, ts_out)
-
-
-            # #### track center ###
-            # center[0:3] += dt * center[3:6]  # linear extrapolation
-            # Rmax = 10.0
-            # near = np.sum((positions[i, :, 0:3] - center[0:3]) ** 2, axis=1) < Rmax ** 2
-            # prev_center = center.copy()
-            # for _ in range(10):
-            #     center = np.median(positions[i, near], axis=0)
-            #     bound = (pot + 0.5 * np.sum(
-            #         (positions[i, :, 3:6] - center[3:6]) ** 2, axis=1)) < 0
-            #     if np.sum(bound) <= 1 or np.all(center == prev_center):
-            #         break
-            #     near = bound & (np.sum(
-            #         (positions[i, :, 0:3] - center[0:3]) ** 2, axis=1) < Rmax ** 2)
-            #     prev_center = center.copy()
