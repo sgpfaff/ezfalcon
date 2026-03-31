@@ -1,0 +1,31 @@
+host:
+  potential:
+    class: galpy.potential.NFWPotential
+    params:
+      amp: "1e13 Msun"
+      a: "20 kpc"
+
+satellite:
+  potential:
+    class: galpy.potential.PlummerPotential
+    params:
+      amp: "1e10 Msun"
+      b: "2.0 kpc"
+  df_class: galpy.df.isotropicPlummerdf
+  m_total: "1.0e10 Msun"
+  center_pos: [25, 0, 0]
+  center_vel: [0, 0, 0]
+
+
+simulation:
+  n_particles: 100000
+  t_end: 1000
+  dt: 1.0
+  dt_out: 10.0
+  eps: 0.1
+  theta: 0.5
+
+outputs:
+  save_animation: true
+  save_data: true
+  output_dir: EX4_run_01

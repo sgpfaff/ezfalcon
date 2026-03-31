@@ -1,0 +1,27 @@
+host:
+  potential:
+    class: galpy.potential.NFWPotential
+    params:
+      amp: "1e13 Msun"
+      a: "20 kpc"
+
+satellite:
+  
+  df_params:
+    W0: 5.0
+  m_total: "1.0e8 Msun"
+  center_pos: [15, 0, 0]
+  center_vel: [0, 0.33, 0.33]
+
+simulation:
+  n_particles: 10000
+  t_end: 800
+  dt: 0.5
+  dt_out: 10.0
+  eps: 0.1
+  theta: 0.6
+
+outputs:
+  save_animation: true
+  save_data: true
+  output_dir: EX5_GC_stream
