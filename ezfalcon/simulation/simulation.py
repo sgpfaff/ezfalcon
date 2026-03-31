@@ -481,8 +481,6 @@ class Sim:
 
         Parameters
         ----------
-        name : str
-            Name of the external potential.
         pot : galpy.potential.Potential
             External potential to add.
         '''
