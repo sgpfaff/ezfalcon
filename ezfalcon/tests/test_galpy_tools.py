@@ -2,7 +2,7 @@ import pytest
 
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential
-from ezfalcon.util import galpydfsampler, galpy_orbit_to_ezfalcon
+from ezfalcon.tools import galpydfsampler, galpy_orbit_to_ezfalcon
 import numpy as np
 import astropy.units as u
 
