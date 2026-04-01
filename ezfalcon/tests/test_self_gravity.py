@@ -18,7 +18,7 @@ binaries = [
 ]
 
 @pytest.mark.parametrize("pos, mass, eps, theta", binaries)
-def test_mutual_gravity(pos, mass, eps, theta):
+def test_mutual_acceleration(pos, mass, eps, theta):
     '''
     Test that the self_gravity function correctly computes the 
     same gravitational acceleration between two particles.

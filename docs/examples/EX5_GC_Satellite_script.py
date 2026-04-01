@@ -2,7 +2,7 @@
 from galpy.df import kingdf
 from galpy.potential import PlummerPotential, NFWPotential, TriaxialNFWPotential
 from ezfalcon.simulation import Sim
-from ezfalcon.util import galpydfsampler
+from ezfalcon.tools import galpydfsampler
 import astropy.units as u
 import numpy as np
 import matplotlib.pyplot as plt

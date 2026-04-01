@@ -1,3 +1,0 @@
-'''
-Test component.py
-'''

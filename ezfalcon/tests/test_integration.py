@@ -38,7 +38,7 @@ pot.turn_physical_on()
 pos = np.array([cyl_to_rect(R, phi, z)])
 vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Myr).value])
 acc_fn = _galpy_pot_to_acc_fn(pot)
-pos_out, vel_out, _, _, ts_out = _integrate(pos, vel, np.array([1.]), False, [acc_fn], t_end.value, dt.value, dt.value, eps=0.0)
+pos_out, vel_out, ts_out = _integrate(pos, vel, np.array([1.]), False, [acc_fn], t_end.value, dt.value, dt.value, eps=0.0)
 
 pot_fn = _galpy_pot_to_pot_fn(pot)
 nsnaps, npart = vel_out.shape[:2]

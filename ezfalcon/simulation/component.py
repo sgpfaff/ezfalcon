@@ -1,5 +1,5 @@
 import numpy as np
-#from .units import return_vel
+from ..dynamics.acceleration import self_gravity
 
 class Component:
     """Slice view into one component's snapshot data."""
@@ -13,6 +13,8 @@ class Component:
         Positions (x, y, z) of particles in the component.
         Units: kpc
         '''
+        print(self._sim._positions.shape)
+        print(self._sim._positions[:, self._sl].shape)
         return self._sim._positions[self._sim._ti(t), self._sl]
 
     def vel(self, t=...):
@@ -67,23 +69,27 @@ class Component:
         return self._sim._velocities[self._sim._ti(t), self._sl, 2]
 
     def external_pot(self, t=...):
-        pass
+        ext_pot = np.zeros(self._mass.shape[0])
+        for fn in self._ext_pot_fns:
+            ext_pot += fn(self.pos(t=t), t=t)
+        return self._mass * ext_pot
     
-    def self_PE(self, t=...):
+    def compute_self_potential(self, eps, theta, t=-1):
         '''
         Self-gravitational potential energy of each particle 
         in the component at time t.
         Units:  Msun kpc²/Myr²
         '''
-        return self._sim._mass[self._sl] * self._sim._self_pot[self._sim._ti(t), self._sl]
+        _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=True)), self._mass, eps, theta=theta)
+        return self._sim._mass[self._sl] * self_pot
     
-    def PE(self, t=...):
+    def PE(self, eps, theta, t=-1):
         '''
         Total potential energy of each particle 
         in the component at time t.
         Units:  Msun kpc²/Myr²
         '''
-        return self.self_PE(t=t) 
+        return self.PE(t=t, eps=eps, theta=theta)[self._sl]
     
     def KE(self, t=...):
         '''
@@ -99,24 +105,16 @@ class Component:
         component at time t.
         Units:  Msun kpc²/Myr²
         """
-        return self.KE(t=t) + self.PE(t=t)
+        return self.KE(t=t) + self.PE(t=t, eps=0, theta=0)
     
-    def system_energy(self, t=...):
+    def system_energy(self, t=-1, eps=0, theta=0):
         """
         Total energy of the component at time t.
-        Units: Msun kpc²/Myr²
+        Units: Msun kpc^2/Myr^2
 
         E = Σ ½ mᵢ|vᵢ|² + ½ Σ mᵢΦ_self,ᵢ + Σ mᵢΦ_ext,ᵢ
         """
-        return self.KE(t=t).sum() + 0.5 * self.self_PE(t=t).sum()
-    
-    # def dE(self):
-    #     '''
-    #     Percent change in total energy over the simulation time.
-    #     Units:  Msun kpc²/Myr²
-    #     '''
-    #     Es = np.array([self.system_energy(t=i) for i in range(len(self._sim.times))])
-    #     return np.abs((Es - Es[0]) / Es[0])
+        return self.KE(t=t).sum() + 0.5 * self.compute_self_potential(t=t, eps=eps, theta=theta).sum() + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
 
     @property
     def mass(self):

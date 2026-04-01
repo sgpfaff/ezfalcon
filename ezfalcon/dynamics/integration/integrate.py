@@ -1,7 +1,8 @@
-from .leapfrog import leapfrog_drift, leapfrog_kick
+from .leapfrog import leapfrog_step #, leapfrog_drift, leapfrog_kick
 from ..acceleration import self_gravity
 import numpy as np
 from tqdm import tqdm
+from functools import partial
 
 def _integrate(pos, vel, mass, 
               include_self_gravity,
@@ -55,7 +56,19 @@ def _integrate(pos, vel, mass,
         Times of each output snapshot.
         Units: Myr
     '''
-
+    def acc_fn(pos, mass, eps, theta):
+        acc = np.zeros_like(vel)
+        self_acc = np.zeros_like(vel)
+        self_pot = np.zeros(mass.shape[0])
+        ext_acc = np.zeros_like(vel)
+        if include_self_gravity:
+            self_acc, self_pot = self_gravity(pos, mass, eps, theta=theta)
+            acc += self_acc
+        for fn in extra_acc:
+            ext_acc += fn(pos, t=0)
+        acc += ext_acc
+        return acc, self_acc, self_pot
+    
     ts_out = np.arange(0, t_end + dt_out, dt_out)
     nsnaps = len(ts_out)
     ts_integrate = np.arange(0, t_end + dt, dt)
@@ -65,52 +78,23 @@ def _integrate(pos, vel, mass,
 
     positions = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
     velocities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
-
-    acc = np.zeros_like(vel)
-    ext_acc = np.zeros_like(vel)
-    self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
-    self_accelerations = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
-
-    if include_self_gravity:
-        self_acc, self_pot = self_gravity(pos, mass, eps, theta=theta)
-        acc += self_acc
-        self_accelerations[0] = self_acc.copy()
-        self_potentials[0] = self_pot.copy()
-
-    for fn in extra_acc:
-        ext_acc += fn(pos, t=0)
-    acc += ext_acc
-
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
+    
+    _, self_acc, self_pot = acc_fn(pos, mass, eps, theta)
 
+    self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
+    self_accelerations = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
+    self_accelerations[0] = self_acc.copy()
+    self_potentials[0] = self_pot.copy()
 
     i_out = 1
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
-        # Drift
-        pos_half = leapfrog_drift(pos, vel, dt/2)
-
-        # Kick
-        acc = np.zeros_like(vel)
-        ext_acc = np.zeros_like(vel)
-        if include_self_gravity:
-            self_acc, self_pot = self_gravity(pos_half, mass, eps, theta=theta)
-            acc += self_acc
-        for fn in extra_acc:
-            ext_acc += fn(pos_half, t=t - dt/2)
-        acc += ext_acc
-
-        vel = leapfrog_kick(vel, acc, dt)
-
-        # Drift
-        pos = leapfrog_drift(pos_half, vel, dt/2)
-
+        pos, vel = leapfrog_step(pos, vel, 
+                                 partial(acc_fn, mass=mass, eps=eps, theta=theta), dt)
         if step % steps_per_output == 0 and i_out < nsnaps:
             positions[i_out] = pos.copy()
             velocities[i_out] = vel.copy()
-            if include_self_gravity:
-                self_potentials[i_out] = self_pot.copy()
-                self_accelerations[i_out] = self_acc.copy()
             i_out += 1
 
-    return (positions, velocities, self_accelerations, self_potentials, ts_out)
+    return (positions, velocities, ts_out)
