@@ -6,10 +6,11 @@ import pytest
 from ezfalcon.simulation import Sim, Component
 import numpy as np
 from ezfalcon.util import G_INTERNAL
+from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
 import astropy.units as u
 
 
-### Setup ###
+# --- Setup ----------------------------------------------------------------------------------- #
 
 np.random.seed(42)
 
@@ -24,7 +25,22 @@ COMP2_VEL = np.random.rand(COMP2_NPTS, 3)
 COMP2_MASS = np.random.rand(COMP2_NPTS)
 
 
-### .add_particles() tests ###
+singlecomp = Sim()
+singlecomp.add_particles('comp1',
+                    pos=COMP1_POS, 
+                    vel=COMP1_VEL, 
+                    mass=COMP1_MASS)
+multicomp = Sim()
+multicomp.add_particles('comp1',
+                    pos=COMP1_POS, 
+                    vel=COMP1_VEL, 
+                    mass=COMP1_MASS)
+multicomp.add_particles('comp2',
+                    pos=COMP2_POS, 
+                    vel=COMP2_VEL, 
+                    mass=COMP2_MASS)
+
+# --- .add_particles() ------------------------------------------------------------------------ #
 
 def test_add_particles_stores_correct_shape():
     sim = Sim()
@@ -91,7 +107,7 @@ def test_add_component_after_run():
                       pos=COMP1_POS, 
                       vel=COMP1_VEL, 
                       mass=COMP1_MASS)
-    sim.run(t_end=1., dt=0.5, dt_out=0.5, eps=0.1)
+    sim.run(t_end=1., dt=0.5, dt_out=0.5, method='direct', eps=0.0)
     with pytest.raises(RuntimeError, match="Cannot add components after run()"):
         sim.add_particles('comp2',
                         pos=COMP2_POS, 
@@ -161,23 +177,12 @@ def test_add_particles_different_number_of_particles():
                           vel=COMP2_VEL,
                           mass=COMP1_MASS)
 
-### Multi-component slicing tests ###
+# --- Multi-component slicing ------------------------------------------------------------------------ #
+#
+# The slicing itself is tested in test_component.py,
+# but here we test that the slices don't overlap and
+# that the correct errors are raised when accessing non-existent components.
 
-singlecomp = Sim()
-singlecomp.add_particles('comp1',
-                    pos=COMP1_POS, 
-                    vel=COMP1_VEL, 
-                    mass=COMP1_MASS)
-
-multicomp = Sim()
-multicomp.add_particles('comp1',
-                    pos=COMP1_POS, 
-                    vel=COMP1_VEL, 
-                    mass=COMP1_MASS)
-multicomp.add_particles('comp2',
-                    pos=COMP2_POS, 
-                    vel=COMP2_VEL, 
-                    mass=COMP2_MASS)
 
 def test_component_slices_are_contiguous():
     '''
@@ -198,7 +203,7 @@ def test_non_existent_component_access():
         _ = multicomp.comp3
 
 
-### test accessors pre-run ###
+# --- accessors pre-run ------------------------------------------------------------------------ #
 
 def test_accessors_are_correct_initially():
     '''
@@ -231,12 +236,12 @@ def test_accessors_match_init_values():
     np.testing.assert_array_equal(multicomp.vz(0), multicomp._init_vel[:, 2])
 
 
-##### POST-RUN, NO EXTERNAL POTENTIAL TESTS ######
+# --- POST-RUN, NO EXTERNAL POTENTIAL TESTS ------------------------------------------------------------------- #
 
-multicomp.run(t_end=1., dt=0.1, dt_out=0.1, eps=0.1)
-singlecomp.run(t_end=1., dt=0.1, dt_out=0.1, eps=0.1)
+multicomp.run(t_end=1., dt=0.1, dt_out=0.1, eps=0.1, theta=0.3)
+singlecomp.run(t_end=1., dt=0.1, dt_out=0.1, eps=0.1, theta=0.3)
 
-### ._ti time indexing tests ###
+# --- ._ti time indexing ------------------------------------------------------------------------ #
 
 def test_ti_int_passthrough():
     '''
@@ -275,17 +280,20 @@ def test_ti_float_out_of_bounds():
         multicomp._ti(100.0)
 
 def test_ti_fails_with_list():
+    '''
+    Test that passing a list raises an error.
+    '''
     with pytest.raises(TypeError, match="t must be an int index, a float time, or ellipsis."):
         multicomp._ti([0, 5], vectorized=False)
 
-def test_ti_vectorized_false_fails_with_ellipse():
+def test_ti_vectorized_false_fails_with_ellipsis():
     '''
-    Test that passing a list when vectorized=False raises an error.
+    Test that passing an ellipsis when vectorized=False raises an error.
     '''
     with pytest.raises(TypeError, match="This method is not vectorized, so t cannot be a list or ellipse. Please provide an integer index or a float time."):
         multicomp._ti(..., vectorized=False)
 
-### Run output tests ###
+# --- output shapes ------------------------------------------------------------------------ #
 
 def test_single_component_run_output_shapes():
     '''
@@ -306,111 +314,62 @@ def test_multicomponent_run_output_shapes():
     assert multicomp._times.shape == (11,)
 
 
-### Test energy methods ###
-
-BINARY_TEST_POS, BINARY_TEST_VELS, BINARY_TEST_MASS = (
-    np.array([[0, -1, 0], [0, 1, 0]]),
-    np.array([[1, 0, 0], [0, 0, 2]]),
-    np.array([1, 1])
-)
-BINARY_TEST_SIM = Sim()
-BINARY_TEST_SIM.add_particles('comp1', 
-                            pos=BINARY_TEST_POS, 
-                            vel=BINARY_TEST_VELS, 
-                            mass=BINARY_TEST_MASS)
-BINARY_TEST_SIM.run(t_end=1, dt=0.5, dt_out=0.5, eps=0.01)
-
-BINARY_TEST_KE = 0.5 * BINARY_TEST_MASS * np.linalg.norm(BINARY_TEST_VELS, axis=-1)**2
-
-BINARY_TEST_SELF_PE = np.array([-G_INTERNAL * BINARY_TEST_MASS[0] * BINARY_TEST_MASS[1] / (
-    np.linalg.norm(BINARY_TEST_POS[1] - BINARY_TEST_POS[0])), 0])
-
-def test_KE_spot_check():
-    '''
-    Test that .KE returns the correct kinetic energy
-    for a simple case.
-    '''
-    assert np.all(np.isclose(BINARY_TEST_SIM.KE(t=0), BINARY_TEST_KE, rtol=1e-10))
-
-def test_self_PE_spot_check():
-    '''
-    Test that .PE returns the correct potential energy
-    for a simple case.
-    '''
-    assert np.all(np.isclose(BINARY_TEST_SIM.compute_self_potential(t=0, eps=0.01, theta=0.3), BINARY_TEST_SELF_PE, rtol=1e-10))
-
-def test_total_energy_spot_check():
-    '''
-    Test that .energy returns the correct total energy
-    for a simple case.
-    '''
-    assert np.all(np.isclose(BINARY_TEST_SIM.energy(t=0, eps=0.01, theta=0.3), BINARY_TEST_KE + BINARY_TEST_SELF_PE, rtol=1e-10))
-
-def test_system_energy_spot_check():
-    '''Test that .system_energy returns the correct total energy'''
-    assert np.isclose(BINARY_TEST_SIM.system_energy(t=0, eps=0.01, theta=0.3), np.sum(BINARY_TEST_KE + BINARY_TEST_SELF_PE), rtol=1e-10)
-
-
-### Test self-gravity toggle ###
+# --- self-gravity toggle ------------------------------------------------------------------------ #
 
 def test_self_gravity_off_gives_zero_acc():
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
     sim.turn_self_gravity_off()
-    sim.run(t_end=2, dt=1, dt_out=2, eps=0.1)
-    acc = [sim.compute_self_gravity(t=i, eps=0.01, theta=0.3) for i in range(len(sim.times))]
+    sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
+    acc = [sim.compute_self_gravity(t=i, method='direct', eps=0.0) for i in range(len(sim.times))]
     np.testing.assert_array_equal(acc, 0)
 
 def test_self_gravity_on_gives_nonzero_acc():
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
     sim.turn_self_gravity_on()
-    sim.run(t_end=2, dt=1, dt_out=2, eps=0.1)
-    acc = [sim.compute_self_gravity(t=i, eps=0.01, theta=0.3) for i in range(len(sim.times))]
+    sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
+    acc = [sim.compute_self_gravity(t=i, method='direct', eps=0.0) for i in range(len(sim.times))]
     assert not np.all(np.isclose(acc, 0, atol=1e-10))
 
-
-### Test self-gravity accessors ###
-
-SELF_GRAVITY_TEST = np.array(-G_INTERNAL * BINARY_TEST_MASS[0] * BINARY_TEST_MASS[1] * (BINARY_TEST_POS[1] - BINARY_TEST_POS[0])/ (
-    np.linalg.norm(BINARY_TEST_POS[1] - BINARY_TEST_POS[0]))**3)
-
-def test_compute_self_gravity_spot_check():
-    assert np.all(np.isclose(np.abs(BINARY_TEST_SIM.compute_self_gravity(t=0, eps=0.01, theta=0.3)), SELF_GRAVITY_TEST, rtol=1e-10))
-def test_self_ax_spot_check():
-    assert np.all(np.isclose(BINARY_TEST_SIM.self_ax(t=0, eps=0.01, theta=0.3), SELF_GRAVITY_TEST[0], rtol=1e-10))
-def test_self_ay_spot_check():
-    assert np.all(np.isclose(BINARY_TEST_SIM.self_ay(t=0, eps=0.01, theta=0.3), SELF_GRAVITY_TEST[1], rtol=1e-10))
-def test_self_az_spot_check():
-    assert np.all(np.isclose(BINARY_TEST_SIM.self_az(t=0, eps=0.01, theta=0.3), SELF_GRAVITY_TEST[2], rtol=1e-10))
-
-
-### test .add_external_pot() ###
+# --- .add_external_pot() ------------------------------------------------------------------------ #
 
 def test_add_external_pot_rejection():
     sim = Sim()
     with pytest.raises(TypeError, match="External potential must be a galpy Potential object."):
         sim.add_external_pot(lambda pos, t: pos)
 
+# --- self-gravity acceleration accessors ------------------------------------------------------------------------ #
 
-### test external acceleration accessors ###
+def test_acc_matches_direct():
+    '''
+    Test that the acceleration accessors match the directly
+    obtained values.
+    '''
+    pos = np.array(np.random.normal(size=(10, 3)))
+    vel = np.array(np.random.normal(size=(10, 3)))
+    mass = np.array(np.random.normal(loc=1e9, scale=1e8, size=(10,)))
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    acc = sim.compute_self_gravity(t=0, method='direct', eps=0.0)
+    acc_direct, _ = _direct_summation(pos, mass, eps=0.0)
+    np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
+
+# --- external acceleration accessors -------------------------------------------------------- #
 
 def test_external_acc_zero_without_pot():
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
-    sim.run(t_end=2, dt=1, dt_out=2, eps=0.1)
+    sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
     np.testing.assert_array_equal(sim.external_acc(-1), 0)
-
-
-### Test external acceleration accessors ###
 
 KEPLER_SIM = Sim()
 from galpy.potential import KeplerPotential
-kepler_pot = KeplerPotential(amp=1.0*u.Msun)
+kepler_pot = KeplerPotential(amp=1e9*u.Msun)
 KEPLER_SIM.add_external_pot(kepler_pot)
-KEPLER_SIM.add_particles('a', pos=np.array([[0.1, 0.1, 0.1]]), vel=np.array([[0, 0.1, 0]]), mass=np.array([0.01]))
-KEPLER_ACC = -G_INTERNAL * 1.0 * 0.01 * np.array([[0.1, 0.1, 0.1]]) / (0.1**2 + 0.1**2 + 0.1**2)**(3/2)
-KEPLER_POT = -G_INTERNAL * 1.0 * 0.01 / np.sqrt(0.1**2 + 0.1**2 + 0.1**2)
+KEPLER_SIM.add_particles('a', pos=np.array([[0.1, 0.2, 0.3]]), vel=np.array([[0, 0.0, 0]]), mass=np.array([1e8]))
+KEPLER_ACC = -G_INTERNAL * 1e9 * np.array([[0.1, 0.2, 0.3]]) / (0.1**2 + 0.2**2 + 0.3**2)**(3/2)
+KEPLER_POT = -G_INTERNAL * 1e8 * 1e9 / np.sqrt(0.1**2 + 0.2**2 + 0.3**2)
 
 def test_external_acc_with_pot():
     acc = KEPLER_SIM.external_acc(0)
@@ -428,35 +387,180 @@ def test_external_az_with_pot():
     az = KEPLER_SIM.external_az(0)
     assert np.all(np.isclose(az, KEPLER_ACC[:, 2], rtol=1e-10))
 
-def test_external_pot_with_pot():
+# --- potential accessors ------------------------------------------------------------------------ #
+
+def test_external_pot_against_direct():
+    '''
+    Aim: Verify compute_external_pot() returns m * phi_ext for a single particle
+    in a Kepler potential, compared to the hand-computed value.
+
+    If this fails: galpy bridge is returning wrong potential values, or
+    compute_external_pot is not multiplying by mass.
+    Relies on: galpy KeplerPotential being correct, _galpy_bridge conversion.
+    '''
     pot = KEPLER_SIM.compute_external_pot(0)
     assert np.all(np.isclose(pot, KEPLER_POT, rtol=1e-10))
 
+def test_compute_self_potential_against_direct():
+    '''
+    Aim: Verify compute_self_potential() equals mass * _direct_summation()
+    potential. This tests that the Sim accessor correctly multiplies by mass
+    on top of the raw solver output. Uses non-unit masses [1e8, 1e10].
 
-KEPLER_SIM.add_particles('b', pos=np.array([[0.2, 0.2, 0.2]]), vel=np.array([[0, 0.1, 0]]), mass=np.array([0.02]))
-KEPLER_SIM.run(t_end=2, dt=1, dt_out=2, eps=0.1)
+    If this fails: compute_self_potential is not multiplying by mass, or is
+    calling self_gravity incorrectly (wrong method, wrong kwargs).
+    Relies on: _direct_summation being correct (test_direct_summation.py).
+    '''
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    _, pot_direct = _direct_summation(pos, mass, eps=0.0)
+    pot_sim = sim.compute_self_potential(t=0, method='direct', eps=0.0)
+    np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
+    np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
 
-def test_total_PE():
-    expected_PE_a = -G_INTERNAL * 1.0 * 0.01 / np.linalg.norm([0.1, 0.1, 0.1]) + -G_INTERNAL * 0.02 * 0.01 / np.linalg.norm([0.1, 0.1, 0.1])
-    expected_PE_b = -G_INTERNAL * 1.0 * 0.02 / np.linalg.norm([0.2, 0.2, 0.2]) + -G_INTERNAL * 0.02 * 0.01 / np.linalg.norm([0.1, 0.1, 0.1])
-    expected_PE = np.array([expected_PE_a, expected_PE_b])
-    assert np.all(np.isclose(KEPLER_SIM.PE(t=0, eps=0.01, theta=0.3), expected_PE, rtol=1e-10))
+def test_PE_against_direct():
+    '''
+    Aim: Verify PE() = mass*phi_self + mass*phi_ext by computing both terms
+    analytically and comparing to the Sim accessor. Uses non-unit masses
+    and an external Kepler potential.
 
-def test_dE():
-    E0 = KEPLER_SIM.system_energy(t=0, eps=0.01, theta=0.3)
-    E1 = KEPLER_SIM.system_energy(t=1, eps=0.01, theta=0.3)
-    dE = KEPLER_SIM.dE(eps=0.01, theta=0.3)
-    assert np.all(np.isclose(E1 - E0, dE, rtol=1e-10))
+    If this fails: PE() is not correctly summing self + external, or one
+    of the terms is missing its mass factor.
+    Relies on: test_compute_self_potential_against_direct, test_external_pot_against_direct.
+    '''
+    pos = np.array([[1.0, 0.0, 0.0], [0.0, 1.5, 0.0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    _, self_pot_direct = _direct_summation(pos, mass, eps=0.0)
+    ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
+                       -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
+    pot_direct = mass * self_pot_direct + ext_pot_direct
+    pot_sim = sim.PE(t=0, method='direct', eps=0.0)
+    np.testing.assert_allclose(pot_sim[0], pot_direct[0], rtol=1e-10)
+    np.testing.assert_allclose(pot_sim[1], pot_direct[1], rtol=1e-10)
 
-### Test .run method ###
+def test_PE_is_sum_of_self_and_external():
+    '''
+    Aim: Verify PE() == compute_self_potential() + compute_external_pot().
+    This is a pure consistency check — it does not compare to analytical
+    values, so it can pass even if both compute_ methods have the same bug.
+
+    If this fails: PE() is doing something other than adding the two
+    compute_ methods together (e.g. extra terms, wrong signs).
+    Relies on: nothing external — only tests internal consistency of Sim.
+    '''
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    self_pot = sim.compute_self_potential(t=0, method='direct', eps=0.0)
+    ext_pot = sim.compute_external_pot(t=0)
+    total_pot = sim.PE(t=0, method='direct', eps=0.0)
+    np.testing.assert_allclose(total_pot, self_pot + ext_pot, rtol=1e-15)
+
+# --- total energy accessors ------------------------------------------------------------------------ #
+
+def test_energy_is_sum_of_KE_and_PE():
+    '''
+    Aim: Verify energy() == KE() + PE() at t=0 (before integration).
+    Pure consistency check — if KE and PE are both wrong in the same
+    way, this still passes. The individual KE/PE correctness is
+    validated by the analytical spot-check tests above.
+
+    If this fails: energy() has extra logic beyond summing KE + PE.
+    Relies on: nothing external — only tests internal consistency of Sim.
+    '''
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    KE = sim.KE(t=0)
+    PE = sim.PE(t=0, method='direct', eps=0.0)
+    energy = sim.energy(t=0, method='direct', eps=0.0)
+    np.testing.assert_allclose(energy, KE + PE, rtol=1e-15)
+
+def test_energy_is_sum_of_KE_and_PE_after_run():
+    '''
+    Aim: Same as test_energy_is_sum_of_KE_and_PE, but checked at t=0.5
+    after the simulation has evolved. Ensures that energy() remains
+    consistent with KE() + PE() even after integration moves particles.
+
+    If this fails: energy() uses stale/cached data instead of recomputing
+    from the current snapshot positions and velocities.
+    Relies on: run() completing without error, pos/vel accessors working
+    at non-zero timesteps.
+    '''
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=0.0)
+    np.testing.assert_allclose(sim.energy(t=0.5, method='direct', eps=0.0), 
+                               sim.KE(t=0.5) + sim.PE(t=0.5, method='direct', eps=0.0), rtol=1e-15)
+
+def test_system_energy_is_sum_of_energies():
+    '''
+    Aim: Verify system_energy() == Σ KE + ½ Σ(m·Φ_self) + Σ(m·Φ_ext).
+    The ½ on the self-PE avoids double-counting pairwise interactions.
+    This checks the scalar reduction logic, NOT whether individual
+    terms have correct mass factors (that's the analytical tests' job).
+
+    NOTE: the expected value here is built from Sim's own accessors
+    (compute_self_potential, compute_external_pot), so this is a
+    consistency test. A shared mass-factor bug would escape.
+
+    If this fails: system_energy() is combining terms incorrectly
+    (e.g. missing the ½ on self-PE, or not summing over particles).
+    Relies on: KE(), compute_self_potential(), compute_external_pot()
+    all returning per-particle arrays of the right shape.
+    '''
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    KE = np.sum(sim.KE(t=0))
+    PE = 0.5 * np.sum(sim.compute_self_potential(t=0, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0))
+    system_energy = sim.system_energy(t=0, method='direct', eps=0.0)
+    np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
+   
+def test_system_energy_is_sum_of_energies_after_run():
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.zeros_like(pos)
+    mass = np.array([1e8, 1e10])
+    sim = Sim()
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.add_external_pot(kepler_pot)
+    sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=0.0)
+    KE = np.sum(sim.KE(t=0.5))
+    PE = 0.5 *np.sum(sim.compute_self_potential(t=0.5, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0.5))
+    system_energy = sim.system_energy(t=0.5, method='direct', eps=0.0)
+    np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
+
+
+# --- Test .run method ------------------------------------------------------------------------ #
+
 def test_negative_dt():
     with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
         KEPLER_SIM.run(
                   t_end=1.0, 
                   dt=-0.1, 
                   dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
+                  method='direct',
+                  eps=0.0)
 
 def test_negative_dt_out():
     with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
@@ -464,8 +568,8 @@ def test_negative_dt_out():
                   t_end=1.0, 
                   dt=0.1, 
                   dt_out=-0.1,
-                  eps=1.0,
-                  theta=0.5)
+                  method='direct',
+                  eps=0.0)
 
 def test_negative_t_end():
     with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
@@ -473,8 +577,8 @@ def test_negative_t_end():
                   t_end=-1.0, 
                   dt=0.1, 
                   dt_out=0.1,
-                  eps=1.0,
-                  theta=0.5)
+                  method='direct',
+                  eps=0.0)
 
 def test_dt_out_less_than_dt():
     with pytest.raises(ValueError, match="dt_out must be greater than or equal to dt."):
@@ -482,11 +586,10 @@ def test_dt_out_less_than_dt():
                   t_end=1.0, 
                   dt=0.1, 
                   dt_out=0.05,
-                  eps=1.0,
-                  theta=0.5)
-        
+                  method='direct',
+                  eps=0.0)
 
-### Energy tests with non-unit masses ###
+# --- Energy tests with non-unit masses ------------------------------------------------------------------------ #
 #
 # All tests above use mass=1, so m*Φ == Φ and missing mass factors are invisible.
 # These tests use deliberately non-unit, non-equal masses so that if mass is
@@ -496,8 +599,7 @@ E_POS  = np.array([[0.0, -1.0, 0.0], [0.0, 1.0, 0.0]])   # 2 kpc apart
 E_VEL  = np.array([[0.5,  0.0, 0.0], [0.0, 0.0, 0.3]])
 E_MASS = np.array([3e8, 5e8])           # non-unit, non-equal, large enough that G*M*M/r >> 1e-8
 E_SEP  = np.linalg.norm(E_POS[1] - E_POS[0])   # 2.0 kpc
-E_EPS  = 0.001
-E_THETA = 0.0
+E_EPS  = 0.0
 E_KEPLER_MASS = 1e10   # Msun, for external Kepler potential
 
 
@@ -508,14 +610,20 @@ def _energy_sim(with_ext_pot=False):
     if with_ext_pot:
         kep = KeplerPotential(amp=E_KEPLER_MASS * u.Msun)
         sim.add_external_pot(kep)
-    sim.run(t_end=0.5, dt=0.25, dt_out=0.25, eps=E_EPS)
+    sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=E_EPS)
     return sim
-
 
 # --- KE -----------------------------------------------------------------
 
 def test_KE_nonunit_mass():
-    """KE = ½ m |v|² must scale with particle mass."""
+    '''
+    Aim: Verify KE = ½ m |v|² with non-unit masses [3e8, 5e8] Msun.
+    Also asserts the result differs from the unit-mass answer, so a
+    missing mass factor would be caught.
+
+    If this fails: KE() is not multiplying by particle mass.
+    Relies on: vel accessor returning correct initial velocities.
+    '''
     sim = _energy_sim()
     ke = sim.KE(t=0)
     expected = 0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1)
@@ -523,13 +631,20 @@ def test_KE_nonunit_mass():
     # Confirm it *differs* from the unit-mass answer
     assert not np.allclose(ke, 0.5 * np.sum(E_VEL ** 2, axis=-1))
 
-
 # --- Self-gravitational PE -----------------------------------------------
 
 def test_self_potential_is_mass_weighted():
-    """compute_self_potential must return m_i * Φ_i, not bare Φ_i."""
+    '''
+    Aim: Verify compute_self_potential returns m_i * Φ_i (not just Φ_i)
+    by comparing to the analytical two-body PE: m_i * (-G * m_j / r_ij).
+    Uses non-unit masses so m*Φ ≠ Φ.
+
+    If this fails: compute_self_potential is returning bare Φ without
+    the mass multiplication, or _direct_summation potential is wrong.
+    Relies on: _direct_summation being correct (test_direct_summation.py).
+    '''
     sim = _energy_sim()
-    pe = sim.compute_self_potential(t=0, eps=E_EPS, theta=E_THETA)
+    pe = sim.compute_self_potential(t=0, method='direct',eps=E_EPS)
     # Two-body: PE_i = m_i * (-G * m_j / r_ij)
     expected_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     expected_1 = -E_MASS[1] * G_INTERNAL * E_MASS[0] / E_SEP
@@ -537,17 +652,33 @@ def test_self_potential_is_mass_weighted():
     np.testing.assert_allclose(pe[1], expected_1, rtol=1e-2)
 
 def test_self_potential_differs_from_bare_phi():
-    """If mass were missing, pe[0] would equal Φ_0 = -G*m1/r, not m0*Φ_0."""
+    '''
+    Aim: Negative sanity check — verify that the returned PE does NOT
+    equal the bare (unweighted) potential Φ_0 = -G*m1/r. If the
+    mass factor were missing, they would match and this test would fail.
+
+    If this fails: compute_self_potential is returning Φ without
+    multiplying by particle mass — the exact bug this was written to catch.
+    Relies on: test_self_potential_is_mass_weighted (if that passes and
+    this fails, there is a contradiction).
+    '''
     sim = _energy_sim()
-    pe = sim.compute_self_potential(t=0, eps=E_EPS, theta=E_THETA)
+    pe = sim.compute_self_potential(t=0, method='direct',eps=E_EPS)
     bare_phi_0 = -G_INTERNAL * E_MASS[1] / E_SEP   # potential, not PE
     assert not np.isclose(pe[0], bare_phi_0, rtol=1e-2, atol=0)
-
 
 # --- External potential (per unit mass) -----------------------------------
 
 def test_external_pot_is_mass_weighted():
-    """compute_external_pot should return m_i * Φ_ext,i."""
+    '''
+    Aim: Verify compute_external_pot returns m_i * Φ_ext,i (not bare Φ_ext)
+    by comparing to the analytical Kepler potential m * (-G * M / r).
+    Uses non-unit masses so m*Φ ≠ Φ.
+
+    If this fails: compute_external_pot is not multiplying by mass, or
+    the galpy bridge is returning wrong potential values.
+    Relies on: galpy KeplerPotential, _galpy_bridge unit conversion.
+    '''
     sim = _energy_sim(with_ext_pot=True)
     ext = sim.compute_external_pot(t=0)
     r0 = np.linalg.norm(E_POS[0])
@@ -557,13 +688,21 @@ def test_external_pot_is_mass_weighted():
     np.testing.assert_allclose(ext[0], expected_0, rtol=1e-2)
     np.testing.assert_allclose(ext[1], expected_1, rtol=1e-2)
 
-
 # --- Total PE (self + external, both mass-weighted) -----------------------
 
 def test_PE_includes_mass_on_external():
-    """PE = m*Φ_self + m*Φ_ext — mass must multiply the external term."""
+    '''
+    Aim: Verify PE() = m*Φ_self + m*Φ_ext by computing both terms
+    analytically with non-unit masses. This is the main end-to-end check
+    that the total PE has mass factors on BOTH the self and external terms.
+
+    If this fails: PE() is missing mass on either the self-gravity or
+    external potential term, or the summation of the two is wrong.
+    Relies on: test_self_potential_is_mass_weighted,
+    test_external_pot_is_mass_weighted (individual terms correct).
+    '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, eps=E_EPS, theta=E_THETA)
+    pe = sim.PE(t=0, method='direct', eps=E_EPS)
 
     r0 = np.linalg.norm(E_POS[0])
     r1 = np.linalg.norm(E_POS[1])
@@ -576,9 +715,18 @@ def test_PE_includes_mass_on_external():
     np.testing.assert_allclose(pe, expected, rtol=1e-2)
 
 def test_PE_external_without_mass_is_wrong():
-    """Verify PE differs from Φ_self + Φ_ext (missing mass on external)."""
+    '''
+    Aim: Negative sanity check — verify PE does NOT match the value you
+    would get if mass were missing from the external potential term.
+    Computes the "wrong" answer (m*Φ_self + Φ_ext) and asserts PE differs.
+
+    If this fails: PE() is not multiplying mass onto the external potential
+    — the exact bug this was written to catch.
+    Relies on: test_PE_includes_mass_on_external (if that passes and this
+    fails, there is a contradiction).
+    '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, eps=E_EPS, theta=E_THETA)
+    pe = sim.PE(t=0, method='direct', eps=E_EPS)
 
     self_pe_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     bare_ext_0 = -G_INTERNAL * E_KEPLER_MASS / np.linalg.norm(E_POS[0])
@@ -589,9 +737,19 @@ def test_PE_external_without_mass_is_wrong():
 # --- System energy --------------------------------------------------------
 
 def test_system_energy_analytical():
-    """E = Σ KE + ½ Σ(m·Φ_self) + Σ(m·Φ_ext), all computed analytically."""
+    '''
+    Aim: Verify system_energy() matches a fully hand-computed value:
+    E = Σ(½ m |v|²) + (-G m0 m1 / r) + Σ(-m_i G M_ext / r_i).
+    The ½ on the self-PE double-counting cancels with the pairwise sum.
+    All values are analytical — no Sim accessors in the expected value.
+
+    If this fails: system_energy has a wrong coefficient (e.g. missing ½
+    on self-PE), a missing mass factor on any term, or wrong signs.
+    Relies on: _direct_summation being correct, galpy bridge being correct.
+    This is the strongest energy test — independent of all other accessors.
+    '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, eps=E_EPS, theta=E_THETA)
+    E = sim.system_energy(t=0, method='direct', eps=E_EPS)
 
     ke = np.sum(0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1))
 
@@ -607,9 +765,18 @@ def test_system_energy_analytical():
     np.testing.assert_allclose(E, expected, rtol=1e-10)
 
 def test_system_energy_mass_on_external_matters():
-    """system_energy must differ from the wrongly unweighted external term."""
+    '''
+    Aim: Negative sanity check — verify system_energy does NOT match
+    the value you get if mass is missing from the external potential sum.
+    Computes the "wrong" answer with bare Φ_ext and asserts it differs.
+
+    If this fails: system_energy is not multiplying mass onto the
+    external potential — the exact bug this was written to catch.
+    Relies on: test_system_energy_analytical (if that passes and this
+    fails, there is a contradiction).
+    '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, eps=E_EPS, theta=E_THETA)
+    E = sim.system_energy(t=0, method='direct', eps=E_EPS)
 
     ke = np.sum(0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1))
     self_pe = -G_INTERNAL * E_MASS[0] * E_MASS[1] / E_SEP
@@ -619,6 +786,3 @@ def test_system_energy_mass_on_external_matters():
                  - G_INTERNAL * E_KEPLER_MASS / r1)  # missing mass
     wrong_E = ke + self_pe + wrong_ext
     assert not np.isclose(E, wrong_E, rtol=1e-2, atol=0)
-
-
-### Test conservation of energy with single orbit in external galpy potential ###

@@ -87,10 +87,7 @@ FULL_TEST_R, FULL_TEST_PHI, FULL_TEST_Z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.
 TEST_GRID_POSITIONS = FULL_TEST_GRID_POSITIONS[((FULL_TEST_GRID_POSITIONS[:, 0] != 0) | (FULL_TEST_GRID_POSITIONS[:, 1] != 0))]
 TEST_R, TEST_PHI, TEST_Z = rect_to_cyl(*TEST_GRID_POSITIONS.T*u.kpc)
 
-
-#-----------------------#
-#  Spherical Potentials #
-#-----------------------#
+# --- Spherical Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=SUPPORTED_GALPY_SPHERICAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def spherical_potential(request):
@@ -128,10 +125,7 @@ def test_reflection_symmetry(spherical_potential):
     acc_neg = acc_fn(-pos, t=0)
     np.testing.assert_allclose(acc_pos, -acc_neg, rtol=1e-12)
     
-
-#----------------------------#
-#  Axisymmetric Potentials   #
-#----------------------------#
+# --- Axisymmetric Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS, ids=lambda p: type(p).__name__)
 def axisymmetric_potential(request):
@@ -150,10 +144,7 @@ def test_axisymmetry(axisymmetric_potential):
     magnitudes = np.linalg.norm(acc, axis=1)
     np.testing.assert_allclose(magnitudes, magnitudes[0], rtol=1e-12)
 
-
-#---------------------------#
-#  All Supported Potentials #
-#---------------------------#
+# --- All Supported Potentials ------------------------------------------------------------------------ #
 
 # # Reuse the grid without the origin for acceleration/potential tests
 # POSITION_GRID = TEST_GRID_POSITIONS
@@ -201,9 +192,7 @@ def test_potential_match(galpy_potential):
         galpy_pot = galpy_potential(FULL_TEST_R, FULL_TEST_Z, phi=FULL_TEST_PHI, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
     assert np.allclose(ez_pot, galpy_pot, rtol=1e-15, equal_nan=True)
 
-#---------------------------#
-#   Triaxial Potentials     #
-#---------------------------#
+# --- Triaxial Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def triaxial_potential(request):
@@ -240,9 +229,7 @@ def test_triaxial_nonzero_phitorque(triaxial_potential):
     torque = triaxial_potential.phitorque(R, z, phi=phi, quantity=True)
     assert torque.value != 0, "Expected non-zero phi torque for triaxial potential"
 
-#---------------------------#
-#  Unsupported Potentials   #
-#---------------------------#
+# --- Unsupported Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=UNSUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
 def unsupported_potential(request):
@@ -252,10 +239,7 @@ def test_identify_unsupported_potential(unsupported_potential):
     with pytest.raises(TypeError):
         _galpy_bridge._check_supported_pot(unsupported_potential)
 
-
-#-----------------------#
-#  Unit Conversion      #
-#-----------------------#
+# --- Unit Conversion ------------------------------------------------------------------------ #
 
 def test_acc_units():
     '''Verify acc_fn returns the correct analytic value in internal units
@@ -291,10 +275,7 @@ def test_pot_units():
     phi = pot_fn(pos, t=0)
     np.testing.assert_allclose(phi[0], expected_phi, rtol=1e-8)
 
-
-#-----------------------#
-#  Input Shape Handling #
-#-----------------------#
+# --- Input Shape Handling ------------------------------------------------------------------------ #
 
 def test_single_particle_acc_shape():
     '''acc_fn should accept a (1,3) array and return (1,3).'''
@@ -329,10 +310,7 @@ def test_large_batch():
     assert acc.shape == (10_000, 3)
     assert np.all(np.isfinite(acc))
 
-
-#-------------------#
-#  Time Dependence  #
-#-------------------#
+# --- Time Dependence  ------------------------------------------------------------------------ #
 
 def test_time_independence(spherical_potential):
     '''For static potentials, acc should not depend on t.'''
@@ -342,9 +320,8 @@ def test_time_independence(spherical_potential):
     acc_t100 = acc_fn(pos, t=100)
     np.testing.assert_array_equal(acc_t0, acc_t100)
 
-#-----------------------#
-#  Force Direction      #
-#-----------------------#
+# --- Force Direction ------------------------------------------------------------------------ #
+
 @pytest.fixture(params=(SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
                                   SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
                                   SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS), ids=lambda p: type(p).__name__)
@@ -368,9 +345,7 @@ def test_force_direction_attractive(general_galpy_potential):
     dots = np.sum(pos * acc, axis=1)
     assert np.all(dots < 0), f"Expected all dot products < 0, got {dots}"
 
-#-------------------------------#
-#  Validation Helper Functions  #
-#-------------------------------#
+# --- Validation Helper Functions ------------------------------------------------------------------ #
 
 def test_check_physical_pot_warns():
     '''_check_physical_pot should warn and turn physical on when not set.'''
@@ -396,9 +371,7 @@ def test_check_supported_warns_non_vectorized():
     with pytest.warns(UserWarning, match="not vectorized"):
         _galpy_bridge._check_supported_pot(pot)
 
-#--------------#
-#  Edge Cases  #
-#--------------#
+# ---  Edge Cases ------------------------------------------------------------------------------------ #
 
 def test_z_axis_nan():
     '''Positions on the z-axis (R=0) should produce NaN — documenting the known galpy singularity.'''
@@ -442,10 +415,7 @@ def test_very_small_radius_cored():
         acc = acc_fn(pos, t=0)
         assert np.all(np.isfinite(acc)), f"{type(pot).__name__} returned non-finite acc at r=1e-10"
 
-
-#--------------------------------#
-#  interpSphericalPotential      #
-#--------------------------------#
+# --- interpSphericalPotential ------------------------------------------------------------------#
 
 def test_interp_spherical_outside_grid():
     '''interpSphericalPotential evaluated outside its rgrid should still return finite values.'''

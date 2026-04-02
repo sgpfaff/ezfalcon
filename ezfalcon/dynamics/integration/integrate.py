@@ -8,7 +8,8 @@ def _integrate(pos, vel, mass,
               include_self_gravity,
               extra_acc,
               t_end, dt, dt_out, 
-              eps, theta=0.6):
+              method,
+              **kwargs):
     '''
     Integrate particle trajectories under self-gravity 
     using leapfrog with falcON.
@@ -26,6 +27,10 @@ def _integrate(pos, vel, mass,
         Units: Msun
     include_self_gravity : bool
         Whether to include self-gravity in the integration.
+    self_gravity_method : str
+        Method to use for computing self-gravity. Included options are:
+        - 'falcON': Use the fast multipole method implemented in falcON.
+        - 'direct': Use direct summation.
     extra_acc : list of callables
         Additional accelerations to be added to the self-gravity accelerations.
     t_end : float
@@ -56,13 +61,14 @@ def _integrate(pos, vel, mass,
         Times of each output snapshot.
         Units: Myr
     '''
-    def acc_fn(pos, mass, eps, theta):
+    
+    def acc_fn(pos, mass, method, **kwargs):
         acc = np.zeros_like(vel)
         self_acc = np.zeros_like(vel)
         self_pot = np.zeros(mass.shape[0])
         ext_acc = np.zeros_like(vel)
         if include_self_gravity:
-            self_acc, self_pot = self_gravity(pos, mass, eps, theta=theta)
+            self_acc, self_pot = self_gravity(pos, mass, method=method, **kwargs)
             acc += self_acc
         for fn in extra_acc:
             ext_acc += fn(pos, t=0)
@@ -81,7 +87,7 @@ def _integrate(pos, vel, mass,
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
     
-    _, self_acc, self_pot = acc_fn(pos, mass, eps, theta)
+    _, self_acc, self_pot = acc_fn(pos, mass, method=method, **kwargs)
 
     self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
     self_accelerations = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
@@ -91,7 +97,7 @@ def _integrate(pos, vel, mass,
     i_out = 1
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
         pos, vel = leapfrog_step(pos, vel, 
-                                 partial(acc_fn, mass=mass, eps=eps, theta=theta), dt)
+                                 partial(acc_fn, mass=mass, method=method, **kwargs), dt)
         if step % steps_per_output == 0 and i_out < nsnaps:
             positions[i_out] = pos.copy()
             velocities[i_out] = vel.copy()

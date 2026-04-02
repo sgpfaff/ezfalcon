@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 
-#### Test leapfrog functions ####
+# --- leapfrog functions ---------------------------------------------------------- #
 
 from ezfalcon.dynamics.integration import leapfrog
 def test_leapfrog_kick():
@@ -19,7 +19,7 @@ def test_leapfrog_drift():
     new_pos = leapfrog.leapfrog_drift(pos, vel, dt)
     assert np.allclose(new_pos, [[1.0, 0.0, 0.0]])
 
-#### Test integration function ####
+# --- integration function ----------------------------------------------------------#
 
 from ezfalcon.dynamics.integration import _integrate
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
@@ -51,12 +51,18 @@ def test_output_times():
     np.testing.assert_allclose(ts_out, ts.value)
 
 def test_conserves_energy():
+    '''
+    Test that total energy is conserved when integrating an orbit in an 
+    external potential. Ensures that the integrator is working correctly.
+    
+    Does not test how the integrator handles self-gravity, which is tested separately.
+    '''
     np.testing.assert_allclose(E_out, E_out[0], rtol=1e-8)
 
 def test_conserves_angular_momentum():
     np.testing.assert_allclose(Lz_out, Lz_out[0], rtol=1e-8)
 
-### Test against galpy
+# --- test against galpy --------------------------------------------------------------------------------#
 
 o_galpy = Orbit([R*u.kpc, vR*u.km/u.s, vT*u.km/u.s, z*u.kpc, vz*u.km/u.s, phi*u.rad])
 o_galpy.integrate(ts, pot, method='leapfrog_c', dt=dt)

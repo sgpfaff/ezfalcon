@@ -10,9 +10,10 @@ from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _ch
 
 
 ### ADD: _has_run decorator to check if simulation has run yet.
+
 class Sim:
     """
-    Self-gravitating N-body simulation powered by pyfalcon.
+    Self-gravitating N-body simulation.
     """
 
     def __init__(self):
@@ -27,14 +28,11 @@ class Sim:
         # Snapshot arrays -- populated by run()
         self._positions = None    # (n_snap, N, 3) kpc
         self._velocities = None   # (n_snap, N, 3) kpc/Myr
-
-        #self._accelerations = None    # (n_snap, N, 3) kpc/Myr²
-        self._self_acc = None # (n_snap, N, 3) kpc/Myr²
-        #self._ext_acc = None # (n_snap, N, 3) kpc/Myr²
-
-        #self._potentials = None    # (n_snap, N) kpc²/Myr²
-        self._self_pot = None   # (n_snap, N)
-        self._ext_pot = None   # (n_snap, N)
+        #self.cached_accelerations = None    # (n_snap, N, 3) kpc/Myr²
+        #self.cached_self_acc = None # (n_snap, N, 3) kpc/Myr²
+        #self.cached_ext_acc = None # (n_snap, N, 3) kpc/Myr²
+        #self.cached_potentials = None    # (n_snap, N) kpc²/Myr²
+        #self.cached_self_pot = None   # (n_snap, N)
   
         self._times = None        # (n_snap,) Myr
         self._has_run = False
@@ -42,14 +40,11 @@ class Sim:
         self._ext_acc_fns = []     # list of functions that take (pos, t) and return (N, 3) acc
         self._ext_pot_fns = []
 
-    # ------------------------------------------------------------------ #
-    #  Time index resolution                                              #
-    # ------------------------------------------------------------------ #
-
     def _ti(self, t, vectorized=True):
-        """Resolve *t* to a snapshot index.
+        """
+        Resolve *t* to a snapshot index.
 
-        None -> -1 (last), int -> direct index, float -> nearest time.
+        int -> direct index, float -> nearest time.
         """
         if isinstance(t, (int, np.integer)) or t == ...:
             if t == ...:
@@ -74,28 +69,58 @@ class Sim:
                 else:
                     return int(np.argmin(np.abs(self._times - t)))
 
-    # ------------------------------------------------------------------ #
-    #  Component access                                                   #
-    # ------------------------------------------------------------------ #
-
     def __getattr__(self, name):
+        '''
+        Access components as attributes, e.g. sim.sat.pos(t=10).
+        '''
         if name.startswith("_"):
             raise AttributeError(name)
         slices = self.__dict__.get("_slices", {})
         if name in slices:
-            return Component(self, slices[name])
+            return Component(self, slices[name], name)
         raise AttributeError(
             f"\'{type(self).__name__}\' has no attribute or component named {name!r}"
         )
+    
+    # --- Setup ---------------------------------------------------------------------------------                                                   
 
-    # ------------------------------------------------------------------ #
-    #  Setup                                                              #
-    # ------------------------------------------------------------------ #
+    def turn_self_gravity_on(self):
+        self._self_gravity_on = True
+
+    def turn_self_gravity_off(self):
+        self._self_gravity_on = False
 
     def add_particles(self, name, pos, vel, mass):
         """
         Add a named particle component.
         Provide (pos, vel, mass) directly [kpc, kpc/Myr, Msun].
+
+        Parameters
+        ----------
+        name : str
+            Name of the component, e.g. 'sat' or 'host'.
+        pos : (N, 3) array
+            Initial positions of particles.
+            Units: `kpc`
+        vel : (N, 3) array
+            Initial velocities of particles.
+            Units: `kpc/Myr`
+        mass : (N,) array
+            Masses of particles.
+            Units: `Msun`
+
+        Returns
+        -------
+        None
+        
+        Raises
+        ------
+        ValueError
+            If the component already exists or if the input arrays have incompatible shapes.
+        TypeError
+            If the input types are incorrect.
+        RuntimeError
+            If the simulation has already been run.
         """
         pos = np.asarray(pos, dtype=np.float64)
         vel = np.asarray(vel, dtype=np.float64)
@@ -133,383 +158,7 @@ class Sim:
         N = self._mass.shape[0]
         self._positions = self._init_pos.reshape(1, N, 3)
         self._velocities = self._init_vel.reshape(1, N, 3)
-        # self._potentials = np.zeros((1, N))
         self._times = np.array([0.0])
-
-    # ------------------------------------------------------------------ #
-    #  Run (stub)                                                        #
-    # ------------------------------------------------------------------ #
-
-    def run(self, t_end, dt, dt_out, eps, theta=0.6):
-        """
-        Run the simulation to *t_end* [Myr].
-        """
-        if dt <= 0 or dt_out <= 0 or t_end <= 0:
-            raise ValueError("dt, dt_out, and t_end must be positive.")
-        if dt_out < dt:
-            raise ValueError("dt_out must be greater than or equal to dt.")
-        
-        self._positions, self._velocities, self._times = _integrate(self._init_pos, self._init_vel, self._mass,
-                                  self._self_gravity_on, self._ext_acc_fns,
-                                  t_end, dt, dt_out, eps, theta=theta)
-        self._has_run = True
-
-    # ------------------------------------------------------------------ #
-    #  Accessors -- all methods with optional t                          #
-    # ------------------------------------------------------------------ #
-
-    def pos(self, t=...):
-        '''
-        Positions (x,y,z).
-        Units: kpc
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        pos : (n_snaps, N, 3) array
-            Positions at each snapshot.
-            Units: kpc
-        '''
-        return self._positions[self._ti(t)]
-
-    def vel(self, t=...):
-        '''
-        Velocities (vx,vy,vz).
-        Units: kpc / Myr
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        vel : (n_snaps, N, 3) array
-            Velocities at each snapshot.
-            Units: kpc / Myr
-        '''
-        return self._velocities[self._ti(t)]
-
-    def x(self, t=...):
-        '''
-        x-positions of all particles at time t.
-        Units: kpc
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        x : (n_snaps, N) array
-            x-positions at each snapshot.
-            Units: kpc
-        '''
-        return self._positions[self._ti(t), :, 0]
- 
-    def y(self, t=...):
-        '''
-        y-positions of all particles at time t.
-        Units: kpc
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        y : (n_snaps, N) array
-            y-positions at each snapshot.
-            Units: kpc
-        '''
-        return self._positions[self._ti(t), :, 1]
-
-    def z(self, t=...):
-        '''
-        z-positions of all particles at time t.
-        Units: kpc
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        z : (n_snaps, N) array
-            z-positions at each snapshot.
-            Units: kpc
-        '''
-        return self._positions[self._ti(t), :, 2]
-
-    def vx(self, t=...):
-        '''
-        x-component of particle velocities at time t.
-        Units: kpc / Myr
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        vx : (n_snaps, N) array
-            x-component of velocities at each snapshot.
-            Units: kpc / Myr
-        '''
-        return self._velocities[self._ti(t), :, 0]
-
-    def vy(self, t=...):
-        '''
-        y-component of particle velocities at time t.
-        Units: kpc / Myr
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        vy : (n_snaps, N) array
-            y-component of velocities at each snapshot.
-            Units: kpc / Myr
-        '''
-        return self._velocities[self._ti(t), :, 1]
-
-    def vz(self, t=...):
-        '''
-        z-component of particle velocities at time t.
-        Units: kpc / Myr
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        vz : (n_snaps, N) array
-            z-component of velocities at each snapshot.
-            Units: kpc / Myr
-        '''
-        return self._velocities[self._ti(t), :, 2]
-    
-    ### Energy Accessors ###
-
-    def compute_external_pot(self, t=-1):
-        '''
-        External potential at time t.
-        Currently only supports time-independent external potentials.
-        Units: kpc^2 / Myr^2
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        ext_pot : (n_snaps, N) array
-            External potential at each snapshot.
-            Units: kpc^2 / Myr^2
-        '''
-        ext_pot = np.zeros(self._mass.shape[0])
-        for fn in self._ext_pot_fns:
-            ext_pot += fn(self.pos(t=t), t=t)
-        return self._mass * ext_pot
-    
-    def compute_self_potential(self, eps, theta, t=-1):
-        '''
-        Self-gravitational potential of each particle at time t.
-        Units:  kpc^2 / Myr^2
-
-        Parameters
-        ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        self_pot : (n_snaps, N) array
-            Self-gravitational potential of each particle at each snapshot.
-            Units: kpc^2 / Myr^2
-
-        Note
-        ----
-        Add method argument and kwargs...
-        '''
-        _, self_pot = self_gravity(self.pos(t=self._ti(t)), self._mass, eps, theta=theta)
-        return self._mass * self_pot
-    
-    def PE(self, eps, theta, t=-1):
-        '''
-        Total potential energy of each particle at time t.
-        Units:  Msun kpc^2 / Myr^2
-
-        Parameters
-        ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            
-            Default is ... (ellipsis), which returns the value at all times.
-        
-        Returns
-        -------
-        PE : (n_snaps, N) array
-            Total potential energy of each particle at each snapshot.
-            Units: Msun kpc^2 / Myr^2
-        '''
-        return self.compute_self_potential(t=t, eps=eps, theta=theta) + self.compute_external_pot(t=self._ti(t, vectorized=False))
-    
-    def KE(self, t=...):
-        '''
-        Kinetic energy of each particle at time t.
-        Units:  Msun kpc^2 / Myr^2
-
-        Parameters
-        ----------
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        KE : (n_snaps, N) array
-            Kinetic energy of each particle at each snapshot.
-            Units: Msun kpc^2 / Myr^2
-        '''
-        return 0.5 * self._mass * np.sum(self.vel(t=t) ** 2, axis=-1)
-
-    def energy(self, eps, theta, t=-1):
-        """
-        Energy of each particle at time t.
-        Units:  Msun kpc^2 / Myr^2
-
-        Parameters
-        ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for falcON.
-            Smaller = more accurate but slower.
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-        
-        Returns
-        -------
-        energy : (n_snaps, N) array
-            Total energy of each particle at each snapshot.
-            Units: Msun kpc^2 / Myr^2
-        """
-        return self.KE(t=t) + self.PE(t=t, eps=eps, theta=theta)
-    
-    def system_energy(self, eps, theta, t=-1):
-        """
-        Total conserved system energy at time t.
-        Units: Msun kpc^2 / Myr^2
-
-        E = Σ ½ mᵢ|vᵢ|² + ½ Σ mᵢΦ_self,ᵢ + Σ mᵢΦ_ext,ᵢ
-
-        Parameters
-        ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
-        t : float or int or None, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-    Default is ... (ellipsis), which returns the value at all times.
-
-        Returns
-        -------
-        energy : float
-            Total energy of the system at time t.
-            Units: Msun kpc^2 / Myr^2
-        """
-        t = self._ti(t, vectorized=False)
-        return np.sum(self.KE(t=t)) + 0.5 * np.sum(self.compute_self_potential(t=t, eps=eps, theta=theta)) + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
-    
-    def dE(self, eps, theta):
-        '''
-        Percent change in total energy over the simulation time.
-
-        Parameters
-        ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
-        Returns
-        -------
-        dE : (n_snaps,) array
-            Percent change in total energy at each snapshot.
-        '''
-        Es = np.array([self.system_energy(t=i, eps=eps, theta=theta) for i in range(len(self.times))])
-        return np.abs((Es - Es[0]) / Es[0])
     
     def add_external_pot(self, pot):
         '''
@@ -519,6 +168,22 @@ class Sim:
         ----------
         pot : galpy.potential.Potential
             External potential to add.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        TypeError
+            If the potential is not a galpy Potential object.
+        
+        Warnings
+        --------
+        UserWarning
+            If the provided galpy potential has physical outputs turned off. 
+            In this case
+        
         '''
         if isinstance(pot, galpy.potential.Potential):
             _check_supported_pot(pot)
@@ -527,29 +192,310 @@ class Sim:
             self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
         else:
             raise TypeError("External potential must be a galpy Potential object.")
-    
-    #### Self-Gravity ###
 
-    def turn_self_gravity_on(self):
-        self._self_gravity_on = True
-
-    def turn_self_gravity_off(self):
-        self._self_gravity_on = False
-
-    def compute_self_gravity(self, eps, theta, t=-1):
-        '''
-        Compute the self-gravity acceleration of each 
-        particle in the component at time t.
-        Units: kpc / Myr^2
+    def run(self, t_end, dt, dt_out, method='falcON', **kwargs):
+        """
+        Run the simulation to *t_end* [Myr].
 
         Parameters
         ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
+        t_end : float
+            End time of the simulation.
+            Units: Myr
+        dt : float
+            Timestep for integration.
+            Units: Myr
+        dt_out : float
+            Output interval.
+            Units: Myr
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method. 
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (kpc)
+        """
+        if dt <= 0 or dt_out <= 0 or t_end <= 0:
+            raise ValueError("dt, dt_out, and t_end must be positive.")
+        if dt_out < dt:
+            raise ValueError("dt_out must be greater than or equal to dt.")
+        
+        self._positions, self._velocities, self._times = _integrate(
+            pos = self._init_pos, 
+            vel = self._init_vel, 
+            mass = self._mass,
+            include_self_gravity = self._self_gravity_on, 
+            self_gravity_method=method,
+            extra_acc = self._ext_acc_fns,
+            t_end = t_end,
+            dt = dt,
+            dt_out = dt_out,
+            **kwargs
+        )
+        self._has_run = True
+
+    # --- Position Accessors -----------------------------------------------------------------
+
+    def pos(self, t=...):
+        '''
+        Particle positions (x,y,z) at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        pos : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Positions at *t*.
+            Units: `kpc`
+        '''
+        return self._positions[self._ti(t)]
+
+    def x(self, t=...):
+        '''
+        Particle x-positions of all particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        x : (len(t), n_particles) array or (n_particles,) array
+            x-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._positions[self._ti(t), :, 0]
+ 
+    def y(self, t=...):
+        '''
+        Particle y-positions of all particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        y : (len(t), n_particles) array or (n_particles,) array
+            y-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._positions[self._ti(t), :, 1]
+
+    def z(self, t=...):
+        '''
+        Particle z-positions of all particles at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        z : (len(t), n_particles) array or (n_particles,) array
+            z-positions at *t*.
+            Units: `kpc`
+        '''
+        return self._positions[self._ti(t), :, 2]
+    
+    # --- Velocity Accessors -----------------------------------------------------------------
+
+    def vel(self, t=...):
+        '''
+        Particle velocities (vx,vy,vz) at *t*.
+
+        Units: `kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vel : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Velocities at *t*.
+            Units: `kpc / Myr`
+        '''
+        return self._velocities[self._ti(t)]
+
+    def vx(self, t=...):
+        '''
+        x-component of particle velocities at *t*.
+
+        Units: :math:`kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vx : (len(t), n_particles) array or (n_particles,) array
+            x-component of velocities at *t*.
+            Units: :math:`kpc / Myr`
+        '''
+        return self._velocities[self._ti(t), :, 0]
+
+    def vy(self, t=...):
+        '''
+        y-component of particle velocities at *t*.
+
+        Units: :math:`kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vy : (len(t), n_particles) array or (n_particles,) array
+            y-component of velocities at *t*.
+            Units: :math:`kpc / Myr`
+        '''
+        return self._velocities[self._ti(t), :, 1]
+
+    def vz(self, t=...):
+        '''
+        z-component of particle velocities at *t*.
+
+        Units: `kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vz : (len(t), n_particles) array or (n_particles,) array
+            z-component of velocities at *t*.
+
+            Units: `kpc / Myr`
+        '''
+        return self._velocities[self._ti(t), :, 2]
+    
+    # --- Energy Accessors -----------------------------------------------------------------
+
+    # --- Potential Energy --- #
+
+    def compute_external_pot(self, t=-1):
+        '''
+        External potential of particles at *t*.
+
+        Units: `kpc^2 / Myr^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        ext_pot : (len(t), n_particles) array
+            External potential at each snapshot.
+            Units: `Msun kpc^2 / Myr^2`
+        '''
+        ext_pot = np.zeros(self._mass.shape[0])
+        for fn in self._ext_pot_fns:
+            ext_pot += fn(self.pos(t=t), t=t)
+        return self._mass * ext_pot
+    
+    def compute_self_potential(self, t=-1, method='falcON', **kwargs):
+        '''
+        Self-gravitational potential of particles at *t*.
+
+        Units: `Msun kpc^2 / Myr^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method. 
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (kpc)
+
+        Returns
+        -------
+        self_pot : (len(t), n_particles) array
+            Self-gravitational potential of each particle at each snapshot.
+
+            Units: `Msun kpc^2 / Myr^2`
+        '''
+        _, self_pot = self_gravity(self.pos(t=self._ti(t)), self._mass, method=method, **kwargs)
+        return self._mass * self_pot
+    
+    def PE(self, t=-1, method='falcON', **kwargs):
+        '''
+        Total potential energy of particles at *t*.
+
+        Units:  `Msun kpc^2 / Myr^2`
+
+        Parameters
+        ----------
         t : float or int, optional
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
@@ -558,23 +504,43 @@ class Sim:
         
         Returns
         -------
-        self_acc : (n_snaps, N, 3) array
-            Self-gravity acceleration of each particle at each snapshot.
-            [ax, ay, az]
-            Units: kpc / Myr^2
+        PE : (len(t), n_particles) array
+            Total potential energy of each particle at each snapshot.
+            Units: `Msun kpc^2 / Myr^2`
         '''
-        if self._self_gravity_on:
-            return self_gravity(self.pos(self._ti(t, vectorized=True)), self.mass, eps=eps, theta=theta)[0]
-        else:
-            return np.zeros_like(self.pos(t=t))
+        return self.compute_self_potential(t=t, method=method, **kwargs) + self.compute_external_pot(t=self._ti(t, vectorized=False))
     
+    # --- Kinetic Energy --- #
 
-    ### Acceleration Accessors ###
-
-    def self_ax(self, eps, theta, t=-1):
+    def KE(self, t=...):
         '''
-        x-component of self-gravity acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        Kinetic energy of particles at *t*.
+
+        Units:  `Msun kpc^2 / Myr^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        KE : (len(t), n_particles) array
+            Kinetic energy of each particle at each snapshot.
+            Units: `Msun kpc^2 / Myr^2`
+        '''
+        return 0.5 * self._mass * np.sum(self.vel(t=t) ** 2, axis=-1)
+
+    # --- Total Energy --- #
+
+    def energy(self, t=-1, method='falcON', **kwargs):
+        """
+        Energy of particles at time t.
+        
+        Units:  `Msun kpc^2 / Myr^2`
 
         Parameters
         ----------
@@ -583,12 +549,165 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method. 
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (kpc)
+        
+        Returns
+        -------
+        energy : (len(t), n_particles) array
+            Total energy of each particle at each snapshot.
+            Units: `Msun kpc^2 / Myr^2`
+        """
+        return self.KE(t=t) + self.PE(t=t, method=method, **kwargs)
+    
+    def system_energy(self, t=-1, method='falcON', **kwargs):
+        r"""
+        Total conserved system energy at time t.
+        
+        Units: `Msun kpc^2 / Myr^2`
+
+        .. math::
+
+            E = \sum_i \frac{1}{2} m_i |v_i|^2 + \frac{1}{2} \sum_i m_i \Phi_{\text{self},i} + \sum_i m_i \Phi_{\text{ext},i}
+
+
+        Parameters
+        ----------
+        t : float or int or None, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (kpc)
+
+        Returns
+        -------
+        energy : float
+            Total energy of the system at time t.
+            Units: :math:`Msun kpc^2 / Myr^2`
+        """
+        t = self._ti(t, vectorized=False)
+        return np.sum(self.KE(t=t)) + 0.5 * np.sum(self.compute_self_potential(t=t, method=method, **kwargs)) + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
+    
+    def dE(self, method, **kwargs):
+        '''
+        Percent change in total energy over the simulation time.
+
+        Parameters
+        ----------
+        method : str
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (kpc)
+        Returns
+        -------
+        dE : (n_snaps,) array
+            Percent change in total energy at each snapshot.
+        '''
+        Es = np.array([self.system_energy(t=i, method=method, **kwargs) for i in range(len(self.times))])
+        return np.abs((Es - Es[0]) / Es[0])
+
+    # --- Acceleration Accessors -----------------------------------------------------------------
+
+    # --- Self-Gravity --- #
+
+    def compute_self_gravity(self, t=-1, method='falcON', **kwargs):
+        '''
+        Compute the self-gravity acceleration of each 
+        particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+        
+        Returns
+        -------
+        self_acc : (n_snaps, N, 3) array
+            Self-gravity acceleration of each particle at each snapshot.
+            [ax, ay, az]
+            Units: `kpc / Myr^2`
+        '''
+        if self._self_gravity_on:
+            return self_gravity(self.pos(self._ti(t, vectorized=True)), self.mass, method=method, **kwargs)[0]
+        else:
+            return np.zeros_like(self.pos(t=t))
+
+    def self_ax(self, t=-1, method='falcON', **kwargs):
+        '''
+        x-component of self-gravity acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+
+            For 'falcON', these include:
+            - eps : float
+                Gravitational softening length.
+                Units: kpc
+            - theta : float
+                Tree opening angle for pyfalcon.
+                Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps : float
+                Gravitational softening length.
+                Units: kpc
         
         Returns
         -------
@@ -597,26 +716,35 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, eps=eps, theta=theta)[..., 0]
+        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 0]
     
-    def self_ay(self, eps, theta, t=-1):
+    def self_ay(self, t=-1, method='falcON', **kwargs):
         '''
-        y-component of self-gravity acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        y-component of self-gravity acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
         t : float or int, optional
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+
+            For 'falcON', these include:
+            - eps : float
+                Gravitational softening length.
+                Units: kpc
+            - theta : float
+                Tree opening angle for pyfalcon.
+                Smaller = more accurate but slower.
         
         Returns
         -------
@@ -625,26 +753,35 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, eps=eps, theta=theta)[..., 1]
+        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 1]
     
-    def self_az(self, eps, theta, t=-1):
+    def self_az(self, t=-1, method='falcON', **kwargs):
         '''
-        z-component of self-gravity acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        z-component of self-gravity acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
-        eps : float
-            Gravitational softening length.
-            Units: kpc
-        theta : float
-            Tree opening angle for pyfalcon.
-            Smaller = more accurate but slower.
         t : float or int, optional
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON': Use the fast multipole method implemented in falcON.
+            - 'direct': Use direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+
+            For 'falcON', these include:
+            - eps : float
+                Gravitational softening length.
+                Units: kpc
+            - theta : float
+                Tree opening angle for pyfalcon.
+                Smaller = more accurate but slower.
         
         Returns
         -------
@@ -653,13 +790,15 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, eps=eps, theta=theta)[..., 2]
+        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 2]
+
+    # --- External Acceleration --- #
 
     def external_acc(self, t=-1):
         '''
         Total external acceleration on each particle 
-        in the component at time t.
-        Units: kpc / Myr^2
+        in the component at *t*.
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
@@ -674,7 +813,7 @@ class Sim:
         ext_acc : (n_snaps, N, 3) array
             External acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `kpc / Myr^2`
         '''
         ext_acc = np.zeros_like(self._velocities[self._ti(t)])
         for fn in self._ext_acc_fns:
@@ -683,8 +822,9 @@ class Sim:
     
     def external_ax(self, t=-1):
         '''
-        x-component of external acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        x-component of external acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
@@ -699,14 +839,15 @@ class Sim:
         external_ax : (n_snaps, N) array
             x-component of external acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `kpc / Myr^2`
         '''
         return self.external_acc(t=t)[:, 0]
 
     def external_ay(self, t=-1):
         '''
-        y-component of external acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        y-component of external acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
@@ -714,21 +855,22 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+            Default is -1, which returns the value at the last snapshot.
         
         Returns
         -------
         external_ay : (n_snaps, N) array
             y-component of external acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `kpc / Myr^2`
         '''
         return self.external_acc(t=t)[:, 1]
     
     def external_az(self, t=-1):
         '''
-        z-component of external acceleration on each particle in the component at time t.
-        Units: kpc / Myr^2
+        z-component of external acceleration on each particle in the component at *t*.
+        
+        Units: `kpc / Myr^2`
 
         Parameters
         ----------
@@ -736,31 +878,42 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+            Default is -1, which returns the value at the last snapshot.
         
         Returns
         -------
         external_az : (n_snaps, N) array
             z-component of external acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `kpc / Myr^2`
         '''        
         return self.external_acc(t=t)[:, 2]
     
-    def plot_diagnostic(self, filename=None):
+    # --- Diagnostics -----------------------------------------------------------------
+    
+    def plot_diagnostic(self, method, filename=None, **kwargs):
         '''
         Plot global energy conservation as a function of 
         time.
         
         Parameters
         ----------
+        method : str
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON': fast multipole method implemented in falcON.
+            - 'direct': direct summation.
         filename : str, optional
             If provided, will save the plot to the given filename
             instead of showing it.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
+            For 'falcON', these include:
+            - eps: Gravitational softening length (kpc)
+            - theta: Tree opening angle
         '''
         import matplotlib.pyplot as plt
         plt.figure(figsize=(6,4))
-        dE = self.dE()
+        dE = self.dE(method=method, **kwargs)
         plt.plot(self.times, dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Myr)")
@@ -771,70 +924,7 @@ class Sim:
         else:
             plt.show()
     
-    def relax(self, components, t_end, dt, eps, theta=0.6, force_center=True):
-        '''
-        Relax the given components in isolation for time t_end.
-
-        Parameters
-        ----------
-        components : list of str or 'all'
-            Names of components to relax. If 'all', relax all components.
-        t_end : float
-            End time of the relaxation.
-            Units: Myr
-        dt : float 
-            Timestep for the relaxation.
-            Units: Myr
-        eps : float
-            Softening length for integration.
-            Units: kpc
-        theta : float, optional
-            Opening angle for the integration.
-        force_center : bool, optional
-            If True, will return the center of the relaxed component
-            to its initial position and velocity to prevent drifting.
-        '''
-        if components == 'all':
-            if force_center:
-                orig_center_pos = np.mean(self._init_pos, axis=0)
-                orig_center_vel = np.mean(self._init_vel, axis=0)
-            all_pos, all_vel, _, _, _ = _integrate(self._init_pos, self._init_vel, self._mass, 
-                      True, {}, t_end, dt, dt_out=t_end, eps=eps, theta=theta)
-            self._init_pos = all_pos[-1]
-            self._init_vel = all_vel[-1]
-            if force_center:
-                self._init_pos += orig_center_pos - np.mean(self._init_pos, axis=0)
-                self._init_vel += orig_center_vel - np.mean(self._init_vel, axis=0)
-        else:
-            comp_pos, comp_vel, comp_masses = [], [], []
-            new_slices = {}
-            offset = 0
-            for comp in components:
-                if comp not in self._slices:
-                    raise ValueError(f'Component \'{comp}\' not included in the simulation.')
-                else:
-                    sl = self._slices[comp]
-                    comp_pos.append(self._init_pos[sl])
-                    comp_vel.append(self._init_vel[sl])
-                    comp_masses.append(self._mass[sl])
-                    n = len(self._mass[sl])
-                    new_slices[comp] = slice(offset, offset + n)
-                    offset += n
-            comp_pos = np.concatenate(comp_pos)
-            comp_vel = np.concatenate(comp_vel)
-            comp_masses = np.concatenate(comp_masses)
-
-            new_positions, new_velocities, _, _, _ = _integrate(comp_pos, comp_vel, comp_masses, True,
-                                                               {}, t_end, dt, dt_out=t_end, eps=eps, theta=theta)
-            for comp in components:
-                sl = self._slices[comp]
-                if force_center:
-                    center_pos = np.mean(self._init_pos[sl], axis=0)
-                    center_vel = np.mean(self._init_vel[sl], axis=0)
-                    new_positions[-1, new_slices[comp]] += center_pos - np.mean(new_positions[-1, new_slices[comp]], axis=0)
-                    new_velocities[-1, new_slices[comp]] += center_vel - np.mean(new_velocities[-1, new_slices[comp]], axis=0)
-                self._init_pos[sl] = new_positions[-1, new_slices[comp]]
-                self._init_vel[sl] = new_velocities[-1, new_slices[comp]]
+    # --- Properties ---------------------------------------------------------------------
     @property
     def mass(self):
         return self._mass
@@ -843,9 +933,7 @@ class Sim:
     def times(self):
         return self._times
 
-    # ------------------------------------------------------------------ #
-    #  I/O                                                                #
-    # ------------------------------------------------------------------ #
+    # --- I/O ------------------------------------------------------------------------------
 
     def save(self):
         raise NotImplementedError("Saving and loading simulations is not yet supported.")
@@ -853,9 +941,7 @@ class Sim:
     def load(self):
         raise NotImplementedError("Saving and loading simulations is not yet supported.")
 
-    # ------------------------------------------------------------------ #
-    #  Converting to galpy                                  #
-    # ------------------------------------------------------------------ #
+    # --- Output to external formats -------------------------------------------------------
 
     def to_galpy(self, t):
         raise NotImplementedError('Outputting galpt orbit is not yet supported.')
