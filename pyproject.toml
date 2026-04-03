@@ -14,7 +14,13 @@ license = { file = "licenses/LICENSE.rst" }
 authors = [
   { name = "Gabriel Pfaffman", email = "gabriel.pfaffman@mail.utoronto.ca" },
 ]
-dependencies = []
+dependencies = [
+    "numpy",
+    "astropy",
+    "galpy",
+    "tqdm",
+    "pyfalcon",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]
