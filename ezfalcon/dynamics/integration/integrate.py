@@ -1,4 +1,4 @@
-from .leapfrog import leapfrog_step #, leapfrog_drift, leapfrog_kick
+from .leapfrog import _leapfrog_step #, leapfrog_drift, leapfrog_kick
 from ..acceleration import self_gravity
 import numpy as np
 from tqdm import tqdm
@@ -6,9 +6,11 @@ from functools import partial
 
 def _integrate(pos, vel, mass, 
               include_self_gravity,
+              self_gravity_method,
               extra_acc,
               t_end, dt, dt_out, 
-              method,
+              return_self_potential=True,
+              return_self_gravity=True,
               **kwargs):
     '''
     Integrate particle trajectories under self-gravity 
@@ -18,13 +20,13 @@ def _integrate(pos, vel, mass,
     ----------
     pos : (N, 3) array
         Initial positions of particles. 
-        Units: kpc
+        Units: `kpc`
     vel : (N, 3) array
         Initial velocities of particles.
-        Units: kpc/Myr
+        Units: `kpc / Myr`
     mass : (N,) array
         Masses of particles.
-        Units: Msun
+        Units: `Msun`
     include_self_gravity : bool
         Whether to include self-gravity in the integration.
     self_gravity_method : str
@@ -35,41 +37,61 @@ def _integrate(pos, vel, mass,
         Additional accelerations to be added to the self-gravity accelerations.
     t_end : float
         End time of integration.
-        Units: Myr
+        Units: `Myr`
     dt : float
         Timestep for integration.
-        Units: Myr
+        Units: `Myr`
     dt_out : float
         Output interval.
-        Units: Myr
+        Units: `Myr`
+    return_self_potential : bool, optional
+        Whether to return the self-gravitational potential at each output snapshot. Default is True.
+    return_self_gravity : bool, optional
+        Whether to return the self-gravitational acceleration at each output snapshot. Default is True.
+    **kwargs
+        Additional keyword arguments to pass to the self-gravity method.
 
     Returns
     -------
     positions : (nsnaps, N, 3) array
         Positions at each output snapshot.
-        Units: kpc
+        Units: `kpc`
     velocities : (nsnaps, N, 3) array
         Velocities at each output snapshot.
-        Units: kpc / Myr
-    self_accelerations : (nsnaps, N, 3) array
-        Self-gravity accelerations at each output snapshot.
-        Units: kpc / Myr^2
-    self_potentials : (nsnaps, N) array
-        Self-gravity potentials at each output snapshot.
-        Units: kpc^2 / Myr^2
+        Units: `kpc / Myr`
     ts : (nsnaps,) array
         Times of each output snapshot.
-        Units: Myr
+        Units: `Myr`
+    self_gravities : (nsnaps, N, 3) array or None
+        Self-gravitational accelerations at each output snapshot. 
+        Returns None if return_self_gravity is False.
+        Units: `kpc / Myr^2`
+    self_potentials : (nsnaps, N) array or None
+        Self-gravitational potentials at each output snapshot.
+        Returns None if return_self_potential is False.
+        Units: `kpc^2 / Myr^2`
     '''
     
     def acc_fn(pos, mass, method, **kwargs):
+        '''
+        Returns None for self_acc (self_pot) if 
+        return_self_gravity (return_self_potential) is False.
+        '''
         acc = np.zeros_like(vel)
-        self_acc = np.zeros_like(vel)
-        self_pot = np.zeros(mass.shape[0])
         ext_acc = np.zeros_like(vel)
         if include_self_gravity:
-            self_acc, self_pot = self_gravity(pos, mass, method=method, **kwargs)
+            if return_self_potential:
+                self_acc, self_pot = self_gravity(pos, mass, method=method, return_potential=True, **kwargs)
+            else:
+                self_pot = None
+                self_acc = self_gravity(pos, mass, method=method, return_potential=False, **kwargs)
             acc += self_acc
+        else:
+            self_acc = np.zeros_like(vel)
+            if return_self_potential:
+                self_pot = np.zeros(pos.shape[0])
+            else:
+                self_pot = None
         for fn in extra_acc:
             ext_acc += fn(pos, t=0)
         acc += ext_acc
@@ -86,21 +108,30 @@ def _integrate(pos, vel, mass,
     velocities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
-    
-    _, self_acc, self_pot = acc_fn(pos, mass, method=method, **kwargs)
 
-    self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
-    self_accelerations = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
-    self_accelerations[0] = self_acc.copy()
-    self_potentials[0] = self_pot.copy()
+    self_potentials = None
+    self_gravities = None
+    acc, self_acc, self_pot = acc_fn(pos, mass, method=self_gravity_method, **kwargs)
+
+    if return_self_potential:
+        self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
+        self_potentials[0] = self_pot.copy()
+    if return_self_gravity:
+        self_gravities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
+        self_gravities[0] = self_acc.copy()
 
     i_out = 1
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
-        pos, vel = leapfrog_step(pos, vel, 
-                                 partial(acc_fn, mass=mass, method=method, **kwargs), dt)
+        (pos, vel, acc, 
+        self_acc, self_pot) = _leapfrog_step(pos, vel, acc, partial(acc_fn, mass=mass, 
+                                                                    method=self_gravity_method, **kwargs), 
+                                            dt=dt)
         if step % steps_per_output == 0 and i_out < nsnaps:
             positions[i_out] = pos.copy()
             velocities[i_out] = vel.copy()
+            if return_self_gravity:
+                self_gravities[i_out] = self_acc.copy()
+            if return_self_potential:
+                self_potentials[i_out] = self_pot.copy()
             i_out += 1
-
-    return (positions, velocities, ts_out)
+    return positions, velocities, ts_out, self_gravities, self_potentials

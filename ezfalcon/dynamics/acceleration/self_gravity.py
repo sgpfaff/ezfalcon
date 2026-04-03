@@ -5,7 +5,10 @@ import pyfalcon
 from ...util import G_INTERNAL
 import numpy as np
 
-def self_gravity(pos, mass, method='falcON', **kwargs):
+SELF_GRAVITY_KEYS = {'eps', 'theta'}
+SELF_GRAVITY_METHODS = ['direct', 'falcON']
+
+def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):
     """
     Compute accelerations and potentials from self-gravity using pyfalcon.
 
@@ -21,6 +24,8 @@ def self_gravity(pos, mass, method='falcON', **kwargs):
         Method to use for computing self-gravity. Options are:
         - 'falcON' (default): Use the fast multipole method implemented in falcON.
         - 'direct': Use direct summation.
+    return_potential : bool, optional
+        Whether to return the self-gravitational potential. Default is True.
     **kwargs
         Additional keyword arguments to pass to the gravity method. 
 
@@ -36,10 +41,14 @@ def self_gravity(pos, mass, method='falcON', **kwargs):
     acc : (N, 3) array
         Accelerations.
         Unit: kpc / Myr^2 (internal units)
-    pot : (N,) array
-        Gravitational potential.
+    pot : (N,) array, optional
+        Specific gravitational potential.
+        Only returned if return_potential is True.
         Unit: kpc^2 / Myr^2 (internal units)
     """
+    if method not in SELF_GRAVITY_METHODS:
+        raise ValueError(f"Unknown method '{method}' for self-gravity. Supported methods: {SELF_GRAVITY_METHODS}")
+   
     if method == 'falcON':
         if 'eps' not in kwargs and 'theta' not in kwargs:
             raise ValueError("Must provide 'eps' and 'theta' keyword arguments for falcON method.")
@@ -50,17 +59,21 @@ def self_gravity(pos, mass, method='falcON', **kwargs):
         else:
             eps = kwargs.get('eps', 0.05)
             theta = kwargs.get('theta', 0.6)
-        return _falcON_gravity(pos, mass, eps, theta)
+        if set(kwargs.keys()) - {'eps', 'theta'}:
+            raise ValueError(f"{set(kwargs.keys()) - {'eps', 'theta'}} is (are) invalid kwarg(s) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed.")
+        return _falcON_gravity(pos, mass, eps, theta, return_potential)
     if method == 'direct':
         if 'eps' not in kwargs:
             raise ValueError("Must provide 'eps' keyword argument for direct summation method.")
         else:
             eps = kwargs.get('eps', 0.05)
-        return _direct_summation(pos, mass, eps)
+        if set(kwargs.keys()) - {'eps'}:
+            raise ValueError(f"{set(kwargs.keys()) - {'eps'}} is (are) invalid kwarg(s) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed.")
+        return _direct_summation(pos, mass, eps, return_potential)
     else:
         raise ValueError(f"Unknown method '{method}' for self-gravity.")
 
-def _falcON_gravity(pos, mass, eps, theta):
+def _falcON_gravity(pos, mass, eps, theta, return_potential):
     """
     Compute accelerations and potentials from self-gravity using pyfalcon.
 
@@ -77,19 +90,25 @@ def _falcON_gravity(pos, mass, eps, theta):
         Unit: kpc
     theta : float, optional
         Tree opening angle (default 0.6). Smaller = more accurate but slower.
+    return_potential : bool
+        Whether to return the self-gravitational potential.
 
     Returns
     -------
     acc : (N, 3) array
         Accelerations.
         Unit: kpc / Myr^2 (internal units)
-    pot : (N,) array
-        Gravitational potential.
+    pot : (N,) array, optional
+        Specific gravitational potential.
+        Only returned if return_potential is True.
         Unit: kpc^2 / Myr^2 (internal units)
     """
-    return pyfalcon.gravity(pos, mass * G_INTERNAL, eps, theta=theta)
+    if return_potential:
+        return pyfalcon.gravity(pos, mass * G_INTERNAL, eps, theta=theta)
+    else:
+        return pyfalcon.gravity(pos, mass * G_INTERNAL, eps, theta=theta)[0]
 
-def _direct_summation(pos, mass, eps):
+def _direct_summation(pos, mass, eps, return_potential):
     '''
     Compute accelerations and potentials from self-gravity using direct summation.
     
@@ -104,25 +123,33 @@ def _direct_summation(pos, mass, eps):
     eps : float
         Gravitational softening length.
         Unit: kpc
+    return_potential : bool
+        Whether to return the self-gravitational potential. Default is True.
 
     Returns
     -------
     acc : (N, 3) array
         Accelerations.
         Unit: kpc / Myr^2 (internal units)
-    pot : (N,) array
-        Gravitational potential.
+    pot : (N,) array, optional
+        Specific gravitational potential.
+        Only returned if return_potential is True.
         Unit: kpc^2 / Myr^2 (internal units)
     '''
     N = len(mass)
     acc = np.zeros_like(pos)
-    pot = np.zeros(N)
+    if return_potential:
+        pot = np.zeros(N)
     for i in range(N):
         mask = np.arange(N) != i
         dx = pos[mask] - pos[i]  # (N-1, 3)
         r2 = np.sum(dx**2, axis=1) + eps**2  # (N-1,)
         inv_r3 = 1.0 / r2**1.5  # (N-1,)
         acc[i] = G_INTERNAL * np.sum(mass[mask, None] * dx * inv_r3[:, None], axis=0)
-        pot[i] = -G_INTERNAL * np.sum(mass[mask] / np.sqrt(r2))
-    return acc, pot
+        if return_potential:
+            pot[i] = -G_INTERNAL * np.sum(mass[mask] / np.sqrt(r2))
+    if return_potential:
+        return acc, pot
+    else:
+        return acc
 

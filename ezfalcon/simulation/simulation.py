@@ -7,9 +7,54 @@ from .component import Component
 from ..dynamics import _integrate, self_gravity
 import galpy
 from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
+import functools
 
+_USE_CACHED_DEFAULT = object()  # sentinel for "caller didn't pass use_cached"
 
-### ADD: _has_run decorator to check if simulation has run yet.
+def _check_use_cached(func):
+    '''
+    Decorator that resolves *use_cached* dynamically:
+      - If the caller didn't pass use_cached:
+          * method given  → use_cached = False  (compute on-the-fly)
+          * method absent → use_cached = _has_run (cache if available, else error)
+      - If the caller explicitly passed use_cached=True:
+          * before run()       → error (no cache exists)
+          * with method given  → error (conflicting intent)
+      - If the caller explicitly passed use_cached=False:
+          * method absent → error (need a method to compute)
+    '''
+    @functools.wraps(func)
+    def wrapper(*args, use_cached=_USE_CACHED_DEFAULT, method=None, **kwargs):
+        sim = args[0]
+        explicit = use_cached is not _USE_CACHED_DEFAULT
+
+        if not explicit:
+            # Auto-resolve: method given → compute; method absent → try cache
+            if method is not None:
+                use_cached = False
+            else:
+                use_cached = sim._has_run
+        else:
+            # Explicit use_cached=True validations
+            if use_cached and not sim._has_run:
+                raise ValueError("Cannot use cached results before run(). "
+                    "Please set use_cached to False and provide a method "
+                    "for computing self-gravity.")
+            if use_cached and method is not None:
+                raise ValueError("`method` should not be specified if "
+                    "`use_cached` is True, since the cached self-gravity "
+                    "was computed using a specific method. Please set "
+                    "`use_cached` to False to specify a method for "
+                    "computing self-gravity.")
+
+        # Final guard: not using cache but no method to compute with
+        if not use_cached and method is None:
+            raise ValueError("No cached results available. Please specify "
+                "a method (e.g. method='direct') to compute self-gravity.")
+
+        return func(*args, use_cached=use_cached, method=method, **kwargs)
+    return wrapper
+
 
 class Sim:
     """
@@ -28,11 +73,10 @@ class Sim:
         # Snapshot arrays -- populated by run()
         self._positions = None    # (n_snap, N, 3) kpc
         self._velocities = None   # (n_snap, N, 3) kpc/Myr
-        #self.cached_accelerations = None    # (n_snap, N, 3) kpc/Myr²
-        #self.cached_self_acc = None # (n_snap, N, 3) kpc/Myr²
+        self._cached_self_acc = None # (n_snap, N, 3) kpc/Myr²
         #self.cached_ext_acc = None # (n_snap, N, 3) kpc/Myr²
         #self.cached_potentials = None    # (n_snap, N) kpc²/Myr²
-        #self.cached_self_pot = None   # (n_snap, N)
+        self._cached_self_pot = None   # (n_snap, N)
   
         self._times = None        # (n_snap,) Myr
         self._has_run = False
@@ -193,7 +237,9 @@ class Sim:
         else:
             raise TypeError("External potential must be a galpy Potential object.")
 
-    def run(self, t_end, dt, dt_out, method='falcON', **kwargs):
+    def run(self, t_end, dt, dt_out, method='falcON', 
+            cache_self_gravity=True, cache_self_potential=True,
+            **kwargs):
         """
         Run the simulation to *t_end* [Myr].
 
@@ -212,12 +258,16 @@ class Sim:
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
             - 'direct': direct summation.
-        **kwargs
+        cache_self_gravity : bool, optional
+            Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
+        cache_self_potential : bool, optional
+            Whether to cache the self-gravitational potential at each output snapshot. Default is True.
+        **kwargs 
             Additional keyword arguments to pass to the gravity method. 
 
             For 'falcON', these include:
             - eps: Gravitational softening length (kpc)
-            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+            - theta: Tree opening angle. Smaller = more accurate but slower.
 
             For 'direct', these include:
             - eps: Gravitational softening length (kpc)
@@ -227,18 +277,21 @@ class Sim:
         if dt_out < dt:
             raise ValueError("dt_out must be greater than or equal to dt.")
         
-        self._positions, self._velocities, self._times = _integrate(
-            pos = self._init_pos, 
-            vel = self._init_vel, 
-            mass = self._mass,
-            include_self_gravity = self._self_gravity_on, 
-            self_gravity_method=method,
-            extra_acc = self._ext_acc_fns,
-            t_end = t_end,
-            dt = dt,
-            dt_out = dt_out,
-            **kwargs
-        )
+        (self._positions, self._velocities, self._times,
+         self._cached_self_acc, self._cached_self_pot) = _integrate(
+                    pos = self._init_pos, 
+                    vel = self._init_vel, 
+                    mass = self._mass,
+                    include_self_gravity = self._self_gravity_on, 
+                    self_gravity_method=method,
+                    extra_acc = self._ext_acc_fns,
+                    t_end = t_end,
+                    dt = dt,
+                    dt_out = dt_out,
+                    return_self_potential = cache_self_potential,
+                    return_self_gravity = cache_self_gravity,
+                    **kwargs
+                )
         self._has_run = True
 
     # --- Position Accessors -----------------------------------------------------------------
@@ -451,7 +504,8 @@ class Sim:
             ext_pot += fn(self.pos(t=t), t=t)
         return self._mass * ext_pot
     
-    def compute_self_potential(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def self_potential(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Self-gravitational potential of particles at *t*.
 
@@ -464,6 +518,8 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-potential if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
@@ -485,10 +541,16 @@ class Sim:
 
             Units: `Msun kpc^2 / Myr^2`
         '''
-        _, self_pot = self_gravity(self.pos(t=self._ti(t)), self._mass, method=method, **kwargs)
-        return self._mass * self_pot
+        if use_cached and self._cached_self_pot is not None:
+            return self._mass * self._cached_self_pot[self._ti(t, vectorized=True)]
+        elif use_cached and self._cached_self_pot is None:
+            raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
+        else:
+            _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False)), self._mass, method=method, **kwargs)
+            return self._mass * self_pot
     
-    def PE(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def PE(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Total potential energy of particles at *t*.
 
@@ -501,14 +563,29 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
-        
+        use_cached : bool, optional
+            Whether to use cached self-potential if available. Default is True.
+        method : str, optional
+            Method to use for computing self-gravity. Included options are:
+            - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct': direct summation.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method. 
+
+            For 'falcON', these include:
+            - eps: Gravitational softening length (`kpc`)
+            - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
+
+            For 'direct', these include:
+            - eps: Gravitational softening length (`kpc`)
+
         Returns
         -------
         PE : (len(t), n_particles) array
             Total potential energy of each particle at each snapshot.
             Units: `Msun kpc^2 / Myr^2`
         '''
-        return self.compute_self_potential(t=t, method=method, **kwargs) + self.compute_external_pot(t=self._ti(t, vectorized=False))
+        return self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs) + self.compute_external_pot(t=self._ti(t, vectorized=False))
     
     # --- Kinetic Energy --- #
 
@@ -535,8 +612,8 @@ class Sim:
         return 0.5 * self._mass * np.sum(self.vel(t=t) ** 2, axis=-1)
 
     # --- Total Energy --- #
-
-    def energy(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def energy(self, t=..., use_cached=True, method=None, **kwargs):
         """
         Energy of particles at time t.
         
@@ -549,6 +626,8 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-gravity from integration if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
@@ -569,9 +648,10 @@ class Sim:
             Total energy of each particle at each snapshot.
             Units: `Msun kpc^2 / Myr^2`
         """
-        return self.KE(t=t) + self.PE(t=t, method=method, **kwargs)
+        return self.KE(t=t) + self.PE(t=t, method=method, use_cached=use_cached, **kwargs)
     
-    def system_energy(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def system_energy(self, t=..., use_cached=True, method=None,  **kwargs):
         r"""
         Total conserved system energy at time t.
         
@@ -589,10 +669,14 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-potential from integration 
+            if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
             - 'direct': direct summation.
+        
         **kwargs
             Additional keyword arguments to pass to the gravity method.
 
@@ -610,9 +694,10 @@ class Sim:
             Units: :math:`Msun kpc^2 / Myr^2`
         """
         t = self._ti(t, vectorized=False)
-        return np.sum(self.KE(t=t)) + 0.5 * np.sum(self.compute_self_potential(t=t, method=method, **kwargs)) + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
+        return np.sum(self.KE(t=t)) + 0.5 * np.sum(self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs)) + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
     
-    def dE(self, method, **kwargs):
+    @_check_use_cached
+    def dE(self, use_cached=True, method=None, **kwargs):
         '''
         Percent change in total energy over the simulation time.
 
@@ -631,19 +716,23 @@ class Sim:
 
             For 'direct', these include:
             - eps: Gravitational softening length (kpc)
+        use_cached : bool, optional
+            Whether to use cached self-potential from integrationif available. Default is True.
+
         Returns
         -------
         dE : (n_snaps,) array
             Percent change in total energy at each snapshot.
         '''
-        Es = np.array([self.system_energy(t=i, method=method, **kwargs) for i in range(len(self.times))])
+        Es = np.array([self.system_energy(t=i, method=method, use_cached=use_cached, **kwargs) for i in range(len(self.times))])
         return np.abs((Es - Es[0]) / Es[0])
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
     # --- Self-Gravity --- #
 
-    def compute_self_gravity(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def self_gravity(self, t=..., use_cached=True, method=None,  **kwargs):
         '''
         Compute the self-gravity acceleration of each 
         particle in the component at *t*.
@@ -657,10 +746,13 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-gravity if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
             - 'direct': direct summation.
+        
         **kwargs
             Additional keyword arguments to pass to the gravity method.
         
@@ -672,11 +764,17 @@ class Sim:
             Units: `kpc / Myr^2`
         '''
         if self._self_gravity_on:
-            return self_gravity(self.pos(self._ti(t, vectorized=True)), self.mass, method=method, **kwargs)[0]
+            if use_cached and self._cached_self_acc is not None:
+                return self._cached_self_acc[self._ti(t, vectorized=True)]
+            elif use_cached and self._cached_self_acc is None:
+                raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
+            else:
+                return self_gravity(self.pos(self._ti(t, vectorized=False)), self.mass, method=method, **kwargs)[0]
         else:
             return np.zeros_like(self.pos(t=t))
-
-    def self_ax(self, t=-1, method='falcON', **kwargs):
+        
+    @_check_use_cached
+    def self_ax(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         x-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -689,6 +787,8 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-gravity if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
@@ -716,9 +816,10 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 0]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 0]
     
-    def self_ay(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def self_ay(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         y-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -731,6 +832,9 @@ class Sim:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
+        use_cached : bool, optional
+            Whether to use cached self-gravity from integration
+            if available. Default is True.
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
@@ -753,9 +857,10 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 1]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 1]
     
-    def self_az(self, t=-1, method='falcON', **kwargs):
+    @_check_use_cached
+    def self_az(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         z-component of self-gravity acceleration on each particle in the component at *t*.
         
@@ -772,6 +877,9 @@ class Sim:
             Method to use for computing self-gravity. Included options are:
             - 'falcON': Use the fast multipole method implemented in falcON.
             - 'direct': Use direct summation.
+        use_cached : bool, optional
+            Whether to use cached self-gravity from integration
+            if available. Default is True.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
 
@@ -790,7 +898,7 @@ class Sim:
             each particle at each snapshot.
             Units: kpc / Myr^2
         '''
-        return self.compute_self_gravity(t=t, method=method, **kwargs)[..., 2]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 2]
 
     # --- External Acceleration --- #
 
@@ -891,7 +999,7 @@ class Sim:
     
     # --- Diagnostics -----------------------------------------------------------------
     
-    def plot_diagnostic(self, method, filename=None, **kwargs):
+    def plot_diagnostic(self, method=None, use_cached=True, filename=None, **kwargs):
         '''
         Plot global energy conservation as a function of 
         time.
@@ -902,6 +1010,8 @@ class Sim:
             Method to use for computing self-gravity. Included options are:
             - 'falcON': fast multipole method implemented in falcON.
             - 'direct': direct summation.
+        use_cached : bool, optional
+            Whether to use cached self-gravity from integration if available. Default is True.
         filename : str, optional
             If provided, will save the plot to the given filename
             instead of showing it.
@@ -913,7 +1023,7 @@ class Sim:
         '''
         import matplotlib.pyplot as plt
         plt.figure(figsize=(6,4))
-        dE = self.dE(method=method, **kwargs)
+        dE = self.dE(method=method, use_cached=use_cached, **kwargs)
         plt.plot(self.times, dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Myr)")

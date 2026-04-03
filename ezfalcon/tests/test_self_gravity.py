@@ -56,3 +56,43 @@ def test_raises_error_for_no_eps_and_theta_with_falcon():
     mass = np.array([1e8, 1e10])
     with pytest.raises(ValueError, match="Must provide 'eps' and 'theta' keyword arguments for falcON method."):
         self_gravity(pos, mass, method='falcON')
+
+# --- return_potential flag -----------------------------------------------------------------------------
+
+def test_return_potential_true_returns_tuple():
+    '''
+    Test that the return_potential flag correctly controls whether the potential is returned.
+    '''
+    pos = np.random.normal(size=(2,3))
+    mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
+    out = self_gravity(pos, mass, method='direct',eps=0.0, return_potential=True)
+    assert isinstance(out, tuple)
+
+def test_return_potential_false_returns_acc_only():
+    '''
+    Test that the return_potential flag correctly controls whether the potential is returned.
+    '''
+    pos = np.random.normal(size=(2,3))
+    mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
+    out = self_gravity(pos, mass, method='direct',eps=0.0, return_potential=False)
+    assert isinstance(out, np.ndarray)
+
+def test_rejects_invalid_kwargs():
+    '''
+    Test that only kwargs for self-gravity methods are allowed.
+    '''
+    pos = np.random.normal(size=(2,3))
+    mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
+    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+        self_gravity(pos, mass, method='direct', eps=0.1, invalid_kwarg=123)
+    with pytest.raises(ValueError, match="\{'invalid_kwarg'\} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+        self_gravity(pos, mass, method='falcON', eps=0.1, theta=0.5, invalid_kwarg=123)
+
+def test_rejects_unknown_method():
+    '''
+    Test that an error is raised if an unknown method is provided.
+    '''
+    pos = np.random.normal(size=(2,3))
+    mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
+    with pytest.raises(ValueError, match="Unknown method 'unknown_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
+        self_gravity(pos, mass, method='unknown_method', eps=0.1)

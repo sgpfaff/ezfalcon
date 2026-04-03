@@ -321,7 +321,7 @@ def test_self_gravity_off_gives_zero_acc():
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
     sim.turn_self_gravity_off()
     sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
-    acc = [sim.compute_self_gravity(t=i, method='direct', eps=0.0) for i in range(len(sim.times))]
+    acc = sim.self_gravity()
     np.testing.assert_array_equal(acc, 0)
 
 def test_self_gravity_on_gives_nonzero_acc():
@@ -329,7 +329,7 @@ def test_self_gravity_on_gives_nonzero_acc():
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
     sim.turn_self_gravity_on()
     sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
-    acc = [sim.compute_self_gravity(t=i, method='direct', eps=0.0) for i in range(len(sim.times))]
+    acc = sim.self_gravity()
     assert not np.all(np.isclose(acc, 0, atol=1e-10))
 
 # --- .add_external_pot() ------------------------------------------------------------------------ #
@@ -351,8 +351,8 @@ def test_acc_matches_direct():
     mass = np.array(np.random.normal(loc=1e9, scale=1e8, size=(10,)))
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    acc = sim.compute_self_gravity(t=0, method='direct', eps=0.0)
-    acc_direct, _ = _direct_summation(pos, mass, eps=0.0)
+    acc = sim.self_gravity(t=0, method='direct', eps=0.0)
+    acc_direct= _direct_summation(pos, mass, eps=0.0, return_potential=False)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
 
 # --- external acceleration accessors -------------------------------------------------------- #
@@ -401,13 +401,13 @@ def test_external_pot_against_direct():
     pot = KEPLER_SIM.compute_external_pot(0)
     assert np.all(np.isclose(pot, KEPLER_POT, rtol=1e-10))
 
-def test_compute_self_potential_against_direct():
+def test_self_potential_against_direct():
     '''
-    Aim: Verify compute_self_potential() equals mass * _direct_summation()
+    Aim: Verify self_potential() equals mass * _direct_summation()
     potential. This tests that the Sim accessor correctly multiplies by mass
     on top of the raw solver output. Uses non-unit masses [1e8, 1e10].
 
-    If this fails: compute_self_potential is not multiplying by mass, or is
+    If this fails: self_potential is not multiplying by mass, or is
     calling self_gravity incorrectly (wrong method, wrong kwargs).
     Relies on: _direct_summation being correct (test_direct_summation.py).
     '''
@@ -416,8 +416,8 @@ def test_compute_self_potential_against_direct():
     mass = np.array([1e8, 1e10])
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    _, pot_direct = _direct_summation(pos, mass, eps=0.0)
-    pot_sim = sim.compute_self_potential(t=0, method='direct', eps=0.0)
+    _, pot_direct = _direct_summation(pos, mass, eps=0.0, return_potential=True)
+    pot_sim = sim.self_potential(t=0, method='direct', eps=0.0)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
     np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
 
@@ -429,7 +429,7 @@ def test_PE_against_direct():
 
     If this fails: PE() is not correctly summing self + external, or one
     of the terms is missing its mass factor.
-    Relies on: test_compute_self_potential_against_direct, test_external_pot_against_direct.
+    Relies on: test_self_potential_against_direct, test_external_pot_against_direct.
     '''
     pos = np.array([[1.0, 0.0, 0.0], [0.0, 1.5, 0.0]])
     vel = np.zeros_like(pos)
@@ -437,7 +437,7 @@ def test_PE_against_direct():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    _, self_pot_direct = _direct_summation(pos, mass, eps=0.0)
+    _, self_pot_direct = _direct_summation(pos, mass, eps=0.0, return_potential=True)
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
     pot_direct = mass * self_pot_direct + ext_pot_direct
@@ -447,12 +447,12 @@ def test_PE_against_direct():
 
 def test_PE_is_sum_of_self_and_external():
     '''
-    Aim: Verify PE() == compute_self_potential() + compute_external_pot().
+    Aim: Verify PE() == self_potential() + compute_external_pot().
     This is a pure consistency check — it does not compare to analytical
     values, so it can pass even if both compute_ methods have the same bug.
 
     If this fails: PE() is doing something other than adding the two
-    compute_ methods together (e.g. extra terms, wrong signs).
+    methods together (e.g. extra terms, wrong signs).
     Relies on: nothing external — only tests internal consistency of Sim.
     '''
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
@@ -461,7 +461,7 @@ def test_PE_is_sum_of_self_and_external():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    self_pot = sim.compute_self_potential(t=0, method='direct', eps=0.0)
+    self_pot = sim.self_potential(t=0, method='direct', eps=0.0)
     ext_pot = sim.compute_external_pot(t=0)
     total_pot = sim.PE(t=0, method='direct', eps=0.0)
     np.testing.assert_allclose(total_pot, self_pot + ext_pot, rtol=1e-15)
@@ -518,12 +518,12 @@ def test_system_energy_is_sum_of_energies():
     terms have correct mass factors (that's the analytical tests' job).
 
     NOTE: the expected value here is built from Sim's own accessors
-    (compute_self_potential, compute_external_pot), so this is a
+    (self_potential, compute_external_pot), so this is a
     consistency test. A shared mass-factor bug would escape.
 
     If this fails: system_energy() is combining terms incorrectly
     (e.g. missing the ½ on self-PE, or not summing over particles).
-    Relies on: KE(), compute_self_potential(), compute_external_pot()
+    Relies on: KE(), self_potential(), compute_external_pot()
     all returning per-particle arrays of the right shape.
     '''
     pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
@@ -533,7 +533,7 @@ def test_system_energy_is_sum_of_energies():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     KE = np.sum(sim.KE(t=0))
-    PE = 0.5 * np.sum(sim.compute_self_potential(t=0, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0))
+    PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0))
     system_energy = sim.system_energy(t=0, method='direct', eps=0.0)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
    
@@ -546,7 +546,7 @@ def test_system_energy_is_sum_of_energies_after_run():
     sim.add_external_pot(kepler_pot)
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=0.0)
     KE = np.sum(sim.KE(t=0.5))
-    PE = 0.5 *np.sum(sim.compute_self_potential(t=0.5, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0.5))
+    PE = 0.5 *np.sum(sim.self_potential(t=0.5, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0.5))
     system_energy = sim.system_energy(t=0.5, method='direct', eps=0.0)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
 
@@ -588,6 +588,33 @@ def test_dt_out_less_than_dt():
                   dt_out=0.05,
                   method='direct',
                   eps=0.0)
+def test_invalid_method():
+    with pytest.raises(ValueError, match="Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.1, 
+                  dt_out=0.1,
+                  method='invalid_method',
+                  eps=0.0) 
+
+def test_invalid_kwargs():
+    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.1, 
+                  dt_out=0.1,
+                  method='direct',
+                  eps=0.0,
+                  invalid_kwarg=42)
+    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.1, 
+                  dt_out=0.1,
+                  method='falcON',
+                  eps=0.0,
+                  theta=0.3,
+                  invalid_kwarg=42)
 
 # --- Energy tests with non-unit masses ------------------------------------------------------------------------ #
 #
@@ -644,7 +671,7 @@ def test_self_potential_is_mass_weighted():
     Relies on: _direct_summation being correct (test_direct_summation.py).
     '''
     sim = _energy_sim()
-    pe = sim.compute_self_potential(t=0, method='direct',eps=E_EPS)
+    pe = sim.self_potential(t=0, method='direct',eps=E_EPS)
     # Two-body: PE_i = m_i * (-G * m_j / r_ij)
     expected_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     expected_1 = -E_MASS[1] * G_INTERNAL * E_MASS[0] / E_SEP
@@ -663,7 +690,7 @@ def test_self_potential_differs_from_bare_phi():
     this fails, there is a contradiction).
     '''
     sim = _energy_sim()
-    pe = sim.compute_self_potential(t=0, method='direct',eps=E_EPS)
+    pe = sim.self_potential(t=0, method='direct',eps=E_EPS)
     bare_phi_0 = -G_INTERNAL * E_MASS[1] / E_SEP   # potential, not PE
     assert not np.isclose(pe[0], bare_phi_0, rtol=1e-2, atol=0)
 
@@ -749,11 +776,10 @@ def test_system_energy_analytical():
     This is the strongest energy test — independent of all other accessors.
     '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, method='direct', eps=E_EPS)
+    E = sim.system_energy(t=0, method='direct', eps=E_EPS, use_cached=False)
 
     ke = np.sum(0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1))
 
-    # ½ * Σ m_i Φ_i = ½*(m0*Φ0 + m1*Φ1) = -G*m0*m1/r  (double-counting factor)
     self_pe = -G_INTERNAL * E_MASS[0] * E_MASS[1] / E_SEP
 
     r0 = np.linalg.norm(E_POS[0])
@@ -768,7 +794,7 @@ def test_system_energy_mass_on_external_matters():
     '''
     Aim: Negative sanity check — verify system_energy does NOT match
     the value you get if mass is missing from the external potential sum.
-    Computes the "wrong" answer with bare Φ_ext and asserts it differs.
+    Computes the "wrong" answer with bare phi_ext and asserts it differs.
 
     If this fails: system_energy is not multiplying mass onto the
     external potential — the exact bug this was written to catch.
@@ -786,3 +812,146 @@ def test_system_energy_mass_on_external_matters():
                  - G_INTERNAL * E_KEPLER_MASS / r1)  # missing mass
     wrong_E = ke + self_pe + wrong_ext
     assert not np.isclose(E, wrong_E, rtol=1e-2, atol=0)
+
+
+# --- self-gravity caching ------------------------------------------------------------------------ #
+
+def _caching_test_sim():
+    sim = Sim()
+    sim.add_particles('test', pos=np.random.normal(size=(10, 3)), vel=np.random.normal(size=(10, 3)), mass=np.random.normal(loc=1e9, scale=1e8, size=(10,)))
+    return sim
+def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
+    sim.run(t_end=1, dt=0.1, dt_out=0.1, 
+            method='direct', eps=0.0, 
+            cache_self_gravity=cache_self_gravity, 
+            cache_self_potential=cache_self_potential)
+    
+def test_no_self_gravity_pot_or_acc_caching_after_run():
+    '''
+    Test that self-gravity potential and acceleration are not cached during
+    run if return_self_acceleration and return_potential are False. 
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
+    assert sim._cached_self_pot is None
+    assert sim._cached_self_acc is None
+    
+def test_self_gravity_acc_caching_only_after_run():
+    '''
+    Test that self-gravity acceleration is cached and potential
+    is not during run if cache_self_gravity is True and cache_self_potential is False.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
+    assert sim._cached_self_acc.shape == (len(sim._times), sim._positions.shape[1], 3)
+    assert sim._cached_self_pot is None
+
+def test_self_gravity_pot_caching_only_after_run():
+    '''
+    Test that self-gravity potential is cached and acceleration is not during run
+    if cache_self_potential is True and cache_self_gravity is False.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
+    assert sim._cached_self_pot.shape == (len(sim._times), sim._positions.shape[1])
+    assert sim._cached_self_acc is None
+
+def test_self_gravity_acc_and_pot_caching_after_run():
+    '''
+    Test that self-gravity acceleration and potential are cached during run
+    if cache_self_gravity and cache_self_potential are True.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
+    assert sim._cached_self_acc.shape == (len(sim._times), sim._positions.shape[1], 3)
+    assert sim._cached_self_pot.shape == (len(sim._times), sim._positions.shape[1])
+
+def test_self_gravity_acc_caching_matches_internal_array():
+    '''
+    Test that the self-gravity acceleration values when 
+    using caching are the same as the internal arrays.
+    
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
+    np.testing.assert_allclose(sim.self_gravity(), sim._cached_self_acc, rtol=1e-10)
+
+def test_self_gravity_pot_caching_matches_internal_array():
+    '''
+    Test that the self-gravity potential values when 
+    using caching are the same as the internal arrays.
+    
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
+    np.testing.assert_allclose(sim.self_potential(), sim._mass * sim._cached_self_pot, rtol=1e-10)
+
+def test_self_gravity_acc_cache_matches_direct_computation():
+    '''
+    Test that the self-gravity acceleration cached results match the internal array after the run.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
+    np.testing.assert_allclose(sim.self_gravity(t=0, method='direct', eps=0.0), sim.self_gravity(t=0, use_cached=True), rtol=1e-10)
+
+def test_self_gravity_pot_cache_matches_direct_computation():
+    '''
+    Test that the self-gravity potential cached results match the internal array after the run.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
+    np.testing.assert_allclose(sim.self_potential(t=0, method='direct', eps=0.0), sim.self_potential(t=0, use_cached=True), rtol=1e-10)
+
+def test_provides_method_but_use_cached_true_raises_error():
+    '''
+    Test that requesting a method-specific computation with use_cached=True
+    raises an error, since the cache is not method-specific.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
+    with pytest.raises(ValueError, match="`method` should not be specified"):
+        sim.self_gravity(t=0, method='direct', eps=0.0, use_cached=True)
+
+def test_use_cache_true_before_run_raises_error():
+    '''
+    Test that trying to use the self-gravity cache before it has been populated by a run raises an error.
+    '''
+    sim = _caching_test_sim()
+    with pytest.raises(ValueError, match="Cannot use cached results before run"):
+        sim.self_gravity(t=0, method=None, eps=0.0, use_cached=True)
+    with pytest.raises(ValueError, match="Cannot use cached results before run"):
+        sim.self_gravity(t=0, method='direct', eps=0.0, use_cached=True)
+
+def test_no_caching_without_method_raises_error():
+    '''
+    Test that setting use_cached=False without specifying a method raises an error.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
+    with pytest.raises(ValueError, match="No cached results available"):
+        sim.self_gravity(t=0, use_cached=False)
+
+def test_caching_defaults_to_false_before_run():
+    '''
+    Test that use_cached defaults to False before run(), so calling an
+    accessor without a method raises the "must provide a method" error
+    (not a cache-lookup error).
+    '''
+    sim = _caching_test_sim()
+    # No explicit use_cached → decorator should resolve to False (pre-run).
+    # With method=None that triggers the "must provide a method" error.
+    with pytest.raises(ValueError, match="No cached results available"):
+        sim.self_gravity(t=0)
+    with pytest.raises(ValueError, match="No cached results available"):
+        sim.self_potential(t=0)
+
+def test_caching_fails_if_run_did_not_cache():
+    '''
+    Test that if you set cache_self_gravity=False but then try to use the cache after the run, it raises an error.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
+    with pytest.raises(ValueError, match="Cached self-potential is not available"):
+        sim.self_potential(t=0, use_cached=True)
+    with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+        sim.self_gravity(t=0, use_cached=True)
