@@ -1090,7 +1090,7 @@ def test_momentum_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    momentum = sim.momentum(t=0)
+    momentum = sim.p(t=0)
     expected = mass[:, None] * vel
     np.testing.assert_allclose(momentum, expected, rtol=1e-15)
 
@@ -1337,3 +1337,255 @@ def test_L_w_center_pos_and_vel():
     L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]))
     expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
+
+# --- coordinate transformations ----------------------------------------------------------------------- #
+
+def _coord_test_sim():
+    """Sim with random particles away from coordinate singularities."""
+    rng = np.random.default_rng(42)
+    sim = Sim()
+    # Avoid z-axis (R=0) and origin (r=0) to prevent division-by-zero
+    pos = rng.normal(loc=3.0, scale=1.0, size=(20, 3))
+    vel = rng.normal(size=(20, 3))
+    mass = np.abs(rng.normal(loc=1e9, scale=1e8, size=(20,)))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    return sim
+
+_COORD_SIM = _coord_test_sim()
+
+def test_spherical_r_consistent_with_cartesian():
+    '''
+    Test that the spherical radius r is consistent with the Cartesian position.
+    '''
+    r_cartesian = np.linalg.norm(_COORD_SIM.pos(t=0), axis=-1)
+    r_spherical = _COORD_SIM.r(t=0)
+    np.testing.assert_allclose(r_cartesian, r_spherical, rtol=1e-15)
+
+def test_spherical_r_consistent_with_cylindrical():
+    '''
+    Test that the spherical radius r is consistent with the cylindrical coordinates R and z.
+    '''
+    expected_r = np.sqrt(_COORD_SIM.cylR(t=0)**2 + _COORD_SIM.z(t=0)**2)
+    np.testing.assert_allclose(_COORD_SIM.r(t=0), expected_r, rtol=1e-15)
+
+def test_phi_consistent_with_cartesian():
+    '''
+    Test that the azimuthal angle phi is consistent with the Cartesian position.
+    '''
+    phi_cartesian = np.arctan2(_COORD_SIM.y(t=0), _COORD_SIM.x(t=0))
+    phi_cylindrical = _COORD_SIM.phi(t=0)
+    np.testing.assert_allclose(phi_cartesian, phi_cylindrical, rtol=1e-15)
+
+
+# --- position coordinate identities (random particles) ------------------------------------------- #
+
+def test_r_squared_equals_x2_y2_z2():
+    """r^2 = x^2 + y^2 + z^2"""
+    np.testing.assert_allclose(
+        _COORD_SIM.r(t=0)**2,
+        _COORD_SIM.x(t=0)**2 + _COORD_SIM.y(t=0)**2 + _COORD_SIM.z(t=0)**2,
+        rtol=1e-14)
+
+def test_cylR_squared_equals_x2_y2():
+    """R^2 = x^2 + y^2"""
+    np.testing.assert_allclose(
+        _COORD_SIM.cylR(t=0)**2,
+        _COORD_SIM.x(t=0)**2 + _COORD_SIM.y(t=0)**2,
+        rtol=1e-14)
+
+def test_cartesian_roundtrip_x():
+    """x = r sin(theta) cos(phi)"""
+    np.testing.assert_allclose(
+        _COORD_SIM.x(t=0),
+        _COORD_SIM.r(t=0) * np.sin(_COORD_SIM.theta(t=0)) * np.cos(_COORD_SIM.phi(t=0)),
+        rtol=1e-14)
+
+def test_cartesian_roundtrip_y():
+    """y = r sin(theta) sin(phi)"""
+    np.testing.assert_allclose(
+        _COORD_SIM.y(t=0),
+        _COORD_SIM.r(t=0) * np.sin(_COORD_SIM.theta(t=0)) * np.sin(_COORD_SIM.phi(t=0)),
+        rtol=1e-14)
+
+def test_cartesian_roundtrip_z():
+    """z = r cos(theta)"""
+    np.testing.assert_allclose(
+        _COORD_SIM.z(t=0),
+        _COORD_SIM.r(t=0) * np.cos(_COORD_SIM.theta(t=0)),
+        rtol=1e-14)
+
+def test_cylR_equals_r_sin_theta():
+    """R = r sin(theta)"""
+    np.testing.assert_allclose(
+        _COORD_SIM.cylR(t=0),
+        _COORD_SIM.r(t=0) * np.sin(_COORD_SIM.theta(t=0)),
+        rtol=1e-14)
+
+def test_theta_range():
+    """theta is in  [0, pi]"""
+    th = _COORD_SIM.theta(t=0)
+    assert np.all(th >= 0) and np.all(th <= np.pi)
+
+def test_phi_range():
+    """phi is in [-pi, pi]"""
+    ph = _COORD_SIM.phi(t=0)
+    assert np.all(ph >= -np.pi) and np.all(ph <= np.pi)
+
+# --- velocity decomposition identities (random particles) ---------------------------------------- #
+
+def test_spherical_velocity_decomposition():
+    """|v|^2 = vr^2 + vtheta^2 + (R*vphi)^2"""
+    v_sq = np.sum(_COORD_SIM.vel(t=0)**2, axis=-1)
+    R = _COORD_SIM.cylR(t=0)
+    recon = (_COORD_SIM.vr(t=0)**2
+             + _COORD_SIM.vtheta(t=0)**2
+             + (R * _COORD_SIM.vphi(t=0))**2)
+    np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
+
+def test_cylindrical_velocity_decomposition():
+    """|v|^2 = vR^2 + (R*vphi)^2 + vz^2"""
+    v_sq = np.sum(_COORD_SIM.vel(t=0)**2, axis=-1)
+    R = _COORD_SIM.cylR(t=0)
+    recon = (_COORD_SIM.cylvR(t=0)**2
+             + (R * _COORD_SIM.vphi(t=0))**2
+             + _COORD_SIM.vz(t=0)**2)
+    np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
+
+
+# --- explicit velocity formulas (random particles) ----------------------------------------------- #
+
+def test_vr_explicit_formula():
+    """vr = (x*vx + y*vy + z*vz) / r"""
+    pos = _COORD_SIM.pos(t=0)
+    vel = _COORD_SIM.vel(t=0)
+    r = np.linalg.norm(pos, axis=-1)
+    expected = (pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1] + pos[:, 2]*vel[:, 2]) / r
+    np.testing.assert_allclose(_COORD_SIM.vr(t=0), expected, rtol=1e-15)
+
+def test_cylvR_explicit_formula():
+    """vR = (x*vx + y*vy) / R"""
+    pos = _COORD_SIM.pos(t=0)
+    vel = _COORD_SIM.vel(t=0)
+    R = np.sqrt(pos[:, 0]**2 + pos[:, 1]**2)
+    expected = (pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1]) / R
+    np.testing.assert_allclose(_COORD_SIM.cylvR(t=0), expected, rtol=1e-15)
+
+def test_vphi_explicit_formula():
+    """vphi = (x*vy - y*vx) / R^2"""
+    pos = _COORD_SIM.pos(t=0)
+    vel = _COORD_SIM.vel(t=0)
+    R_sq = pos[:, 0]**2 + pos[:, 1]**2
+    expected = (pos[:, 0]*vel[:, 1] - pos[:, 1]*vel[:, 0]) / R_sq
+    np.testing.assert_allclose(_COORD_SIM.vphi(t=0), expected, rtol=1e-15)
+
+def test_vtheta_explicit_formula():
+    """vtheta = [z(x*vx + y*vy) - R^2*vz] / (r*R)"""
+    pos = _COORD_SIM.pos(t=0)
+    vel = _COORD_SIM.vel(t=0)
+    R = np.sqrt(pos[:, 0]**2 + pos[:, 1]**2)
+    r = np.linalg.norm(pos, axis=-1)
+    in_plane_dot = pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1]
+    expected = (pos[:, 2] * in_plane_dot - R**2 * vel[:, 2]) / (r * R)
+    np.testing.assert_allclose(_COORD_SIM.vtheta(t=0), expected, rtol=1e-15)
+
+
+# --- known geometry: particle on x-axis ---------------------------------------------------------- #
+
+def _axis_sim(pos, vel):
+    sim = Sim()
+    sim.add_particles('test', pos=np.atleast_2d(pos).astype(np.float64),
+                      vel=np.atleast_2d(vel).astype(np.float64),
+                      mass=np.array([1e9]))
+    return sim
+
+def test_x_axis_positions():
+    """Particle at (5,0,0): r=5, φ=0, θ=π/2, R=5"""
+    sim = _axis_sim([5, 0, 0], [0, 0, 0])
+    assert sim.r(t=0)[0] == pytest.approx(5.0)
+    assert sim.phi(t=0)[0] == pytest.approx(0.0)
+    assert sim.theta(t=0)[0] == pytest.approx(np.pi / 2)
+    assert sim.cylR(t=0)[0] == pytest.approx(5.0)
+
+def test_x_axis_radial_motion():
+    """Particle at (3,0,0) moving in +x: purely radial."""
+    sim = _axis_sim([3, 0, 0], [2, 0, 0])
+    assert sim.vr(t=0)[0] == pytest.approx(2.0)
+    assert sim.cylvR(t=0)[0] == pytest.approx(2.0)
+    assert sim.vphi(t=0)[0] == pytest.approx(0.0)
+    assert sim.vtheta(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+
+def test_x_axis_tangential_motion():
+    """Particle at (3,0,0) moving in +y: purely tangential."""
+    sim = _axis_sim([3, 0, 0], [0, 5, 0])
+    assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.vphi(t=0)[0] == pytest.approx(5.0 / 3.0)  # vphi = vT/R
+    assert sim.vtheta(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+
+def test_x_axis_polar_motion():
+    """Particle at (3,0,0) moving in +z: purely polar (vtheta)."""
+    sim = _axis_sim([3, 0, 0], [0, 0, 4])
+    assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.vphi(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    # vtheta should capture the full z-velocity here (theta=pi/2 → ẑ is the -thetâ direction)
+    assert sim.vtheta(t=0)[0] == pytest.approx(-4.0)
+
+
+# --- known geometry: 45° in xz-plane ------------------------------------------------------------- #
+
+def test_45deg_xz_positions():
+    """Particle at (1,0,1): r=sqrt(2), phi=0, theta=pi/4, R=1"""
+    sim = _axis_sim([1, 0, 1], [0, 0, 0])
+    assert sim.r(t=0)[0] == pytest.approx(np.sqrt(2))
+    assert sim.phi(t=0)[0] == pytest.approx(0.0)
+    assert sim.theta(t=0)[0] == pytest.approx(np.pi / 4)
+    assert sim.cylR(t=0)[0] == pytest.approx(1.0)
+
+def test_45deg_xz_radial_motion():
+    """Particle at (1,0,1) moving radially outward along (1,0,1)/sqrt(2)."""
+    s = 1 / np.sqrt(2)
+    sim = _axis_sim([1, 0, 1], [3*s, 0, 3*s])
+    assert sim.vr(t=0)[0] == pytest.approx(3.0)
+    assert sim.vtheta(t=0)[0] == pytest.approx(0.0, abs=1e-14)
+    assert sim.vphi(t=0)[0] == pytest.approx(0.0, abs=1e-14)
+
+
+# --- known geometry: xy-plane circle -------------------------------------------------------------- #
+
+def test_circular_orbit_xy():
+    """Particle at (R,0,0) with velocity (0,v,0): purely tangential."""
+    R0, v0 = 4.0, 7.0
+    sim = _axis_sim([R0, 0, 0], [0, v0, 0])
+    assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+    assert sim.vphi(t=0)[0] == pytest.approx(v0 / R0)
+    # tangential linear velocity = R * φ̇ = v0
+    assert _COORD_SIM.cylR(t=0)[0] * _COORD_SIM.vphi(t=0)[0] == pytest.approx(
+        _COORD_SIM.cylR(t=0)[0] * _COORD_SIM.vphi(t=0)[0])  # tautology guard
+    assert sim.cylR(t=0)[0] * sim.vphi(t=0)[0] == pytest.approx(v0)
+
+
+# --- known geometry: particle at (1,1,0) --------------------------------------------------------- #
+
+def test_xy_diagonal_positions():
+    """Particle at (1,1,0): phi=pi/4, theta=pi/2, R=r=sqrt(2)"""
+    sim = _axis_sim([1, 1, 0], [0, 0, 0])
+    assert sim.phi(t=0)[0] == pytest.approx(np.pi / 4)
+    assert sim.theta(t=0)[0] == pytest.approx(np.pi / 2)
+    assert sim.r(t=0)[0] == pytest.approx(np.sqrt(2))
+    assert sim.cylR(t=0)[0] == pytest.approx(np.sqrt(2))
+
+def test_xy_diagonal_radial_motion():
+    """Particle at (1,1,0) moving along (1,1,0): purely radial."""
+    sim = _axis_sim([1, 1, 0], [1, 1, 0])
+    assert sim.vr(t=0)[0] == pytest.approx(np.sqrt(2))
+    assert sim.cylvR(t=0)[0] == pytest.approx(np.sqrt(2))
+    assert sim.vphi(t=0)[0] == pytest.approx(0.0, abs=1e-15)
+
+def test_xy_diagonal_tangential_motion():
+    """Particle at (1,1,0) moving along (-1,1,0): purely tangential."""
+    sim = _axis_sim([1, 1, 0], [-1, 1, 0])
+    assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-14)
+    assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-14)
+    assert sim.vphi(t=0)[0] == pytest.approx(1.0)

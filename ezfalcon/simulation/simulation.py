@@ -437,6 +437,103 @@ class Sim:
             Units: `kpc`
         '''
         return self._positions[self._ti(t), :, 2]
+
+    def r(self, t=...):
+        '''
+        Particle spherical radii at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        r : (len(t), n_particles) array or (n_particles,) array
+            Spherical radii at *t*.
+            Units: `kpc`
+        '''
+        pos = self.pos(t)
+        return np.linalg.norm(pos, axis=-1)
+
+    def phi(self, t=...):
+        '''
+        Particle azimuthal angles at *t*.
+        
+            *Angle present in both spherical and 
+            cylindrical coordinates*
+
+        Units: radians
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        phi : (len(t), n_particles) array or (n_particles,) array
+            Azimuthal angles at *t*.
+            Units: radians
+        '''
+        pos = self.pos(t)
+        return np.arctan2(pos[..., 1], pos[..., 0])
+    
+    def theta(self, t=...):
+        '''
+        Particle polar angles at *t*.
+
+            *Angle present in spherical coordinates.*
+
+        Units: radians
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        theta : (len(t), n_particles) array or (n_particles,) array
+            Polar angles at *t*.
+            Units: radians
+        '''
+        pos = self.pos(t)
+        r = np.linalg.norm(pos, axis=-1)
+        return np.arccos(pos[..., 2] / r)
+
+    def cylR(self, t=...):
+        '''
+        Particle cylindrical radii at *t*.
+
+        Units: `kpc`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        R : (len(t), n_particles) array or (n_particles,) array
+            Cylindrical radii at *t*.
+            Units: `kpc`
+        '''
+        return np.sqrt(self.x(t)**2 + self.y(t)**2)
     
     # --- Velocity Accessors -----------------------------------------------------------------
 
@@ -528,6 +625,115 @@ class Sim:
             Units: `kpc / Myr`
         '''
         return self._velocities[self._ti(t), :, 2]
+
+    def vr(self, t=...):
+        '''
+        Spherical coordinates radial velocities at *t*.
+
+        The component of the velocity vector along the position vector, 
+        i.e. :math:`v_r = (x*v_x + y*v_y + z*v_z) / r`.*
+
+        Units: `kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vr : (len(t), n_particles) array or (n_particles,) array
+            Radial velocities at *t*.
+            Units: `kpc / Myr`
+        '''
+        pos = self.pos(t)
+        vel = self.vel(t)
+        vr = np.sum(pos * vel, axis=-1) / self.r(t)
+        return vr
+
+    def vphi(self, t=...):
+        '''
+        Azimuthal velocities at *t* (for both spherical and cylindrical coordinates).
+
+        The component of the velocity vector along the azimuthal direction, 
+        i.e. :math:`v_{phi} = (x*v_y - y*v_x) / (x^2 + y^2)`.*
+
+        Units: `rad / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vphi : (len(t), n_particles) array or (n_particles,) array
+            Azimuthal velocities at *t*.
+            Units: `rad / Myr`
+        '''
+        return (self.x(t) * self.vy(t) - self.y(t) * self.vx(t)) / self.cylR(t)**2
+    
+    def vtheta(self, t=...):
+        '''
+        Polar velocities at *t* (for spherical coordinates).
+
+        The component of the velocity vector along the polar direction, 
+        i.e. :math:`v_{theta} = [z(x*vx + y*vy) - R^2*vz] / (r*R)`.*
+
+        Units: `kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        vtheta : (len(t), n_particles) array or (n_particles,) array
+            Polar velocities at *t*.
+            Units: `kpc / Myr`
+        '''
+        r = self.r(t)
+        return (
+            ((self.z(t) * 
+              (self.x(t) * self.vx(t) + self.y(t) * self.vy(t)))
+             - self.cylR(t)**2 * self.vz(t)) 
+            / (r * self.cylR(t))
+        )
+    
+    def cylvR(self, t=...):
+        '''
+        Cylindrical coordinates radial velocities at *t*.
+
+        The component of the velocity vector along the cylindrical radius vector, 
+        i.e. :math:`v_{cyl,R} = (x*v_x + y*v_y) / R`.*
+
+        Units: `kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        cylvR : (len(t), n_particles) array or (n_particles,) array
+            Cylindrical radial velocities at *t*.
+            Units: `kpc / Myr`
+        '''
+        return (self.x(t) * self.vx(t) + self.y(t) * self.vy(t)) / self.cylR(t)
 
     # --- Momentum Accessors -----------------------------------------------------------------
 
@@ -1360,40 +1566,6 @@ class Sim:
         plt.ylabel("$|\Delta p / p_0|$")
         plt.legend()
         plt.title(f"Momentum Conservation")
-        if filename is not None:
-            plt.savefig(filename, dpi=300, bbox_inches='tight')
-        else:
-            plt.show()
-
-    def plot_angular_momentum_diagnostic(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0], filename=None):
-        '''
-        Plot the distribution of particle angular momenta at *t* about *center*.
-
-        Parameters
-        ----------
-        t : float or int, optional
-            Time of snapshot to access.
-            If float, will return snapshot closest to that time.
-            If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
-        center_pos : array-like, optional
-            Point to compute angular momentum about. Default is [0,0,0].
-            Units: `kpc`
-        center_vel : array-like, optional
-            Velocity of the center point. Default is [0,0,0].
-            Units: `kpc/Myr`
-        filename : str, optional
-            If provided, will save the plot to the given filename
-            instead of showing it.
-        '''
-        import matplotlib.pyplot as plt
-
-        L = self.L(t=t, center_pos=center_pos, center_vel=center_vel)
-        plt.figure(figsize=(6,4))
-        plt.scatter(L[:, 0], L[:, 1], s=5, c='k', alpha=0.5)
-        plt.xlabel("$L_x$ ($Msun kpc^2 / Myr$)")
-        plt.ylabel("$L_y$ ($Msun kpc^2 / Myr$)")
-        plt.title(f"Particle Angular Momenta at t={self.times[self._ti(t)]:.2f} Myr")
         if filename is not None:
             plt.savefig(filename, dpi=300, bbox_inches='tight')
         else:
