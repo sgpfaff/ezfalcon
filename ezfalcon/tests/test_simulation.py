@@ -1075,3 +1075,265 @@ def test_self_gravity_compute_single_t_shape():
 def test_system_energy_compute_single_t_shape():
     result = _SHAPE_SIM.system_energy(t=0, method='direct', eps=0.05)
     assert np.isscalar(result) or result.shape == ()
+
+
+# --- Momentum Accessors ------------------------------------------------------------------------ #
+# --- comparison with analytic calculation --- #
+
+def test_momentum_analytic():
+    '''
+    Aim: Verify that momentum = m * velocity for each particle at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    momentum = sim.momentum(t=0)
+    expected = mass[:, None] * vel
+    np.testing.assert_allclose(momentum, expected, rtol=1e-15)
+
+def test_px_analytic():
+    '''
+    Aim: Verify that px accessor returns the x-component of momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    px = sim.px(t=0)
+    expected = mass * vel[:, 0]
+    np.testing.assert_allclose(px, expected, rtol=1e-15)
+
+def test_py_analytic():
+    '''
+    Aim: Verify that py accessor returns the y-component of momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    py = sim.py(t=0)
+    expected = mass * vel[:, 1]
+    np.testing.assert_allclose(py, expected, rtol=1e-15)
+
+def test_pz_analytic():
+    '''
+    Aim: Verify that pz accessor returns the z-component of momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    pz = sim.pz(t=0)
+    expected = mass * vel[:, 2]
+    np.testing.assert_allclose(pz, expected, rtol=1e-15)
+
+def test_L_analytic():
+    '''
+    Aim: Verify that L = r x p at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    L = sim.L(t=0)
+    momentum = mass[:, None] * vel
+    expected = np.cross(pos, momentum)
+    np.testing.assert_allclose(L, expected, rtol=1e-15)
+
+def test_Lx_analytic():
+    '''
+    Aim: Verify that Lx accessor returns the x-component of angular momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    Lx = sim.Lx(t=0)
+    # Lx = y*pz - z*py
+    expected = mass * (pos[:, 1] * vel[:, 2] - pos[:, 2] * vel[:, 1])
+    np.testing.assert_allclose(Lx, expected, rtol=1e-15)
+
+def test_Ly_analytic():
+    '''
+    Aim: Verify that Ly accessor returns the y-component of angular momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    Ly = sim.Ly(t=0)
+    # Ly = z*px - x*pz
+    expected = mass * (pos[:, 2] * vel[:, 0] - pos[:, 0] * vel[:, 2])
+    np.testing.assert_allclose(Ly, expected, rtol=1e-15)
+
+def test_Lz_analytic():
+    '''
+    Aim: Verify that Lz accessor returns the z-component of angular momentum at t=0.
+    '''
+    sim = Sim()
+    pos = np.random.normal(size=(10, 3))
+    vel = np.random.normal(size=(10, 3))
+    mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    Lz = sim.Lz(t=0)
+    # Lz = x*py - y*px
+    expected = mass * (pos[:, 0] * vel[:, 1] - pos[:, 1] * vel[:, 0])
+    np.testing.assert_allclose(Lz, expected, rtol=1e-15)
+
+# -- momentum shapes --- #
+
+def test_linear_momentum_single_t_shape():
+    result = _SHAPE_SIM.p(t=0)
+    assert result.shape == (_N_PART, 3)
+
+def test_linear_momentum_ellipsis_shape():
+    result = _SHAPE_SIM.p(t=...)
+    assert result.shape == (_N_SNAP, _N_PART, 3)
+
+def test_px_shape():
+    result = _SHAPE_SIM.px(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_px_ellipsis_shape():
+    result = _SHAPE_SIM.px(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+def test_py_shape():
+    result = _SHAPE_SIM.py(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_py_ellipsis_shape():
+    result = _SHAPE_SIM.py(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+def test_pz_shape():
+    result = _SHAPE_SIM.pz(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_pz_ellipsis_shape():
+    result = _SHAPE_SIM.pz(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+def test_L_shape():
+    result = _SHAPE_SIM.L(t=0)
+    assert result.shape == (_N_PART, 3)
+
+def test_L_ellipsis_shape():
+    result = _SHAPE_SIM.L(t=...)
+    assert result.shape == (_N_SNAP, _N_PART, 3)
+
+def test_Lx_shape():
+    result = _SHAPE_SIM.Lx(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_Lx_ellipsis_shape():
+    result = _SHAPE_SIM.Lx(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+def test_Ly_shape():
+    result = _SHAPE_SIM.Ly(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_Ly_ellipsis_shape():
+    result = _SHAPE_SIM.Ly(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+def test_Lz_shape():
+    result = _SHAPE_SIM.Lz(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_Lz_ellipsis_shape():
+    result = _SHAPE_SIM.Lz(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+# --- consistency --- #
+
+def test_px_consistent_with_momentum():
+    result = _SHAPE_SIM.px(t=0)
+    expected = _SHAPE_SIM.p(t=0)[:, 0]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_py_consistent_with_momentum():
+    result = _SHAPE_SIM.py(t=0)
+    expected = _SHAPE_SIM.p(t=0)[:, 1]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_pz_consistent_with_momentum():
+    result = _SHAPE_SIM.pz(t=0)
+    expected = _SHAPE_SIM.p(t=0)[:, 2]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_L_consistent_with_momentum_and_position():
+    result = _SHAPE_SIM.L(t=0)
+    expected = np.cross(_SHAPE_SIM._positions[0], _SHAPE_SIM.p(t=0))
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_Lx_consistent_with_L():
+    result = _SHAPE_SIM.Lx(t=0)
+    expected = _SHAPE_SIM.L(t=0)[:, 0]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_Ly_consistent_with_L():
+    result = _SHAPE_SIM.Ly(t=0)
+    expected = _SHAPE_SIM.L(t=0)[:, 1]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_Lz_consistent_with_L():
+    result = _SHAPE_SIM.Lz(t=0)
+    expected = _SHAPE_SIM.L(t=0)[:, 2]
+    np.testing.assert_allclose(result, expected, rtol=1e-15)
+
+def test_L_w_center_pos():
+    '''
+    Test center_pos shift in calculation of L.
+    '''
+    sim = Sim()
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
+    mass = np.array([1e8, 1e9])
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    L = sim.L(center_pos=np.array([0.5, 0.5, 0]))
+    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel)
+    np.testing.assert_allclose(L[0], expected, rtol=1e-15)
+
+def test_L_w_center_vel():
+    '''
+    Test center_vel shift in calculation of L.
+    '''
+    sim = Sim()
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
+    mass = np.array([1e8, 1e9])
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    L = sim.L(center_vel=np.array([0.05, 0.05, 0]))
+    expected = mass[:, None] * np.cross(pos, vel - np.array([0.05, 0.05, 0]))
+    np.testing.assert_allclose(L[0], expected, rtol=1e-15)
+
+def test_L_w_center_pos_and_vel():
+    '''
+    Test center_pos and center_vel shift in calculation of L.
+    '''
+    sim = Sim()
+    pos = np.array([[1.0, 0, 0], [0, 1.5, 0]])
+    vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
+    mass = np.array([1e8, 1e9])
+    sim.add_particles('test', pos=pos, vel=vel, mass=mass)
+    L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]))
+    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel - np.array([0.05, 0.05, 0]))
+    np.testing.assert_allclose(L[0], expected, rtol=1e-15)

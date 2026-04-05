@@ -528,6 +528,212 @@ class Sim:
             Units: `kpc / Myr`
         '''
         return self._velocities[self._ti(t), :, 2]
+
+    # --- Momentum Accessors -----------------------------------------------------------------
+
+    def p(self, t=...):
+        '''
+        Particle momenta (px, py, pz) at *t*.
+        
+        Units: `Msun kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        
+        Returns
+        -------
+        momentum : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Momenta at *t*.
+            Units: `Msun kpc / Myr`
+        '''
+        return self._mass[:, None] * self.vel(t)
+    
+    def px(self, t=...):
+        '''
+        x-component of particle momenta at *t*.
+
+        Units: `Msun kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        px : (len(t), n_particles) array or (n_particles,) array
+            x-component of momenta at *t*.
+            Units: `Msun kpc / Myr`
+        '''
+        return self._mass * self.vx(t)
+
+    def py(self, t=...):
+        '''
+        y-component of particle momenta at *t*.
+
+        Units: `Msun kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        py : (len(t), n_particles) array or (n_particles,) array
+            y-component of momenta at *t*.
+            Units: `Msun kpc / Myr`
+        '''
+        return self._mass * self.vy(t)
+    
+    def pz(self, t=...):
+        '''
+        z-component of particle momenta at *t*.
+
+        Units: `Msun kpc / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+
+        Returns
+        -------
+        pz : (len(t), n_particles) array or (n_particles,) array
+            z-component of momenta at *t*.
+            Units: `Msun kpc / Myr`
+        '''
+        return self._mass * self.vz(t)
+
+    def L(self, t=..., center_pos=None, center_vel=None):
+        '''
+        Angular momentum of particles at *t*
+
+        Units: `Msun kpc^2 / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        center_pos : array-like, optional
+            Point to compute angular momentum about. Default is [0,0,0].
+            Units: `kpc`
+        center_vel : array-like, optional
+            Velocity of the center point. Default is [0,0,0].
+            Units: `kpc/Myr`
+
+        Returns
+        -------
+        L : (len(t), n_particles, 3) array or (n_particles, 3) array
+            Angular momentum of each particle at *t* about *center*.
+            Units: `Msun kpc^2 / Myr`
+        '''
+        r = self.pos(t)
+        v = self.vel(t)
+        if center_pos is not None:
+            r = r - np.asarray(center_pos)
+        if center_vel is not None:
+            v = v - np.asarray(center_vel)
+        return self.mass[:, None] * np.cross(r, v)
+    
+    def Lx(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+        '''
+        x-component of particle angular momentum at *t* about *center*.
+
+        Units: `Msun kpc^2 / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        center_pos : array-like, optional
+            Point to compute angular momentum about. Default is [0,0,0].
+            Units: `kpc`
+        center_vel : array-like, optional
+            Velocity of the center point. Default is [0,0,0].
+            Units: `kpc/Myr`
+
+        Returns
+        -------
+        Lx : (len(t), n_particles) array or (n_particles,) array
+            x-component of angular momentum of each particle at *t* about *center*.
+            Units: `Msun kpc^2 / Myr`
+        '''
+        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 0]
+    def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+        '''
+        y-component of particle angular momentum at *t* about *center*.
+
+        Units: `Msun kpc^2 / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        center_pos : array-like, optional
+            Point to compute angular momentum about. Default is [0,0,0].
+            Units: `kpc`
+        center_vel : array-like, optional
+            Velocity of the center point. Default is [0,0,0].
+            Units: `kpc/Myr`
+
+        Returns
+        -------
+        Ly : (len(t), n_particles) array or (n_particles,) array
+            y-component of angular momentum of each particle at *t* about *center*.
+            Units: `Msun kpc^2 / Myr`
+        '''
+        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 1]
+    def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
+        '''
+        z-component of particle angular momentum at *t* about *center*.
+
+        Units: `Msun kpc^2 / Myr`
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        center_pos : array-like, optional
+            Point to compute angular momentum about. Default is [0,0,0].
+            Units: `kpc`
+        center_vel : array-like, optional
+            Velocity of the center point. Default is [0,0,0].
+            Units: `kpc/Myr`
+
+        Returns
+        -------
+        Lz : (len(t), n_particles) array or (n_particles,) array
+            z-component of angular momentum of each particle at *t* about *center*.
+            Units: `Msun kpc^2 / Myr`
+        '''
+        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 2]
     
     # --- Energy Accessors -----------------------------------------------------------------
 
@@ -1082,7 +1288,7 @@ class Sim:
     
     # --- Diagnostics -----------------------------------------------------------------
     @_resolve_use_cached
-    def plot_diagnostic(self, method=None, use_cached=True, nsnap=None, 
+    def plot_energy_diagnostic(self, method=None, use_cached=True, nsnap=None, 
                         filename=None, **kwargs):
         '''
         Plot global energy conservation as a function of 
@@ -1111,7 +1317,7 @@ class Sim:
 
         skip_every = 1 if nsnap is None else max(1, len(self.times) // nsnap)
         
-        plt.figure(figsize=(6,4))
+        plt.figure(figsize=(7,5))
         dE = self.dE(t=..., use_cached=use_cached, method=method, **kwargs)[::skip_every]
         plt.plot(self.times[::skip_every], dE, c='k')
         plt.yscale('log')
@@ -1122,6 +1328,77 @@ class Sim:
             plt.savefig(filename, dpi=300, bbox_inches='tight')
         else:
             plt.show()
+    
+    def plot_momentum_diagnostic(self, filename=None,
+                                 plot_components=True):
+        '''
+        Plot the distribution of particle momenta at *t*.
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        filename : str, optional
+            If provided, will save the plot to the given filename
+            instead of showing it.
+        plot_components : bool, optional
+            Whether to plot the time evolution of the total px, py, pz components. 
+            Default is True.
+
+        '''
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(7,5))
+        if plot_components:
+            plt.plot(self.times, (np.sum(self.px(), axis=-1)-np.sum(self.px(t=0), axis=-1))/np.sum(self.px(t=0), axis=-1), alpha=0.5, lw=4, label='$p_x$')
+            plt.plot(self.times, (np.sum(self.py(), axis=-1)-np.sum(self.py(t=0), axis=-1))/np.sum(self.py(t=0), axis=-1), alpha=0.5, lw=4, label='$p_y$')
+            plt.plot(self.times, (np.sum(self.pz(), axis=-1)-np.sum(self.pz(t=0), axis=-1))/np.sum(self.pz(t=0), axis=-1), alpha=0.5, lw=4, label='$p_z$')
+        plt.plot(self.times, np.sum((np.sum(self.p(), axis=-1)-np.sum(self.p(t=0), axis=-1)), axis=-1)/ np.sum(self.p(t=0)), c='k', label='Total')
+        plt.xlabel("Time (Myr)")
+        plt.ylabel("$|\Delta p / p_0|$")
+        plt.legend()
+        plt.title(f"Momentum Conservation")
+        if filename is not None:
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+        else:
+            plt.show()
+
+    def plot_angular_momentum_diagnostic(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0], filename=None):
+        '''
+        Plot the distribution of particle angular momenta at *t* about *center*.
+
+        Parameters
+        ----------
+        t : float or int, optional
+            Time of snapshot to access.
+            If float, will return snapshot closest to that time.
+            If int, will return snapshot at that index.
+            Default is ... (ellipsis), which returns the value at all times.
+        center_pos : array-like, optional
+            Point to compute angular momentum about. Default is [0,0,0].
+            Units: `kpc`
+        center_vel : array-like, optional
+            Velocity of the center point. Default is [0,0,0].
+            Units: `kpc/Myr`
+        filename : str, optional
+            If provided, will save the plot to the given filename
+            instead of showing it.
+        '''
+        import matplotlib.pyplot as plt
+
+        L = self.L(t=t, center_pos=center_pos, center_vel=center_vel)
+        plt.figure(figsize=(6,4))
+        plt.scatter(L[:, 0], L[:, 1], s=5, c='k', alpha=0.5)
+        plt.xlabel("$L_x$ ($Msun kpc^2 / Myr$)")
+        plt.ylabel("$L_y$ ($Msun kpc^2 / Myr$)")
+        plt.title(f"Particle Angular Momenta at t={self.times[self._ti(t)]:.2f} Myr")
+        if filename is not None:
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+        else:
+            plt.show()
+        
     
     # --- Properties ---------------------------------------------------------------------
     @property
