@@ -11,6 +11,7 @@ def _integrate(pos, vel, mass,
               t_end, dt, dt_out, 
               return_self_potential=True,
               return_self_gravity=True,
+              return_ext_acc=True,
               **kwargs):
     '''
     Integrate particle trajectories under self-gravity 

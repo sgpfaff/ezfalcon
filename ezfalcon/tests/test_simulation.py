@@ -589,7 +589,7 @@ def test_dt_out_less_than_dt():
                   method='direct',
                   eps=0.0)
 def test_invalid_method():
-    with pytest.raises(ValueError, match="Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
+    with pytest.raises(ValueError, match="Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'direct_C', 'falcON'\]"):
         KEPLER_SIM.run(
                   t_end=1.0, 
                   dt=0.1, 
@@ -617,10 +617,6 @@ def test_invalid_kwargs():
                   invalid_kwarg=42)
 
 # --- Energy tests with non-unit masses ------------------------------------------------------------------------ #
-#
-# All tests above use mass=1, so m*Φ == Φ and missing mass factors are invisible.
-# These tests use deliberately non-unit, non-equal masses so that if mass is
-# missing from any PE/energy term, the analytical expected value will not match.
 
 E_POS  = np.array([[0.0, -1.0, 0.0], [0.0, 1.0, 0.0]])   # 2 kpc apart
 E_VEL  = np.array([[0.5,  0.0, 0.0], [0.0, 0.0, 0.3]])
@@ -662,11 +658,11 @@ def test_KE_nonunit_mass():
 
 def test_self_potential_is_mass_weighted():
     '''
-    Aim: Verify compute_self_potential returns m_i * Φ_i (not just Φ_i)
+    Aim: Verify compute_self_potential returns m_i * phi_i (not just phi_i)
     by comparing to the analytical two-body PE: m_i * (-G * m_j / r_ij).
-    Uses non-unit masses so m*Φ ≠ Φ.
+    Uses non-unit masses so m*phi ≠ phi.
 
-    If this fails: compute_self_potential is returning bare Φ without
+    If this fails: compute_self_potential is returning bare phi without
     the mass multiplication, or _direct_summation potential is wrong.
     Relies on: _direct_summation being correct (test_direct_summation.py).
     '''
@@ -681,10 +677,10 @@ def test_self_potential_is_mass_weighted():
 def test_self_potential_differs_from_bare_phi():
     '''
     Aim: Negative sanity check — verify that the returned PE does NOT
-    equal the bare (unweighted) potential Φ_0 = -G*m1/r. If the
+    equal the bare (unweighted) potential phi_0 = -G*m1/r. If the
     mass factor were missing, they would match and this test would fail.
 
-    If this fails: compute_self_potential is returning Φ without
+    If this fails: compute_self_potential is returning phi without
     multiplying by particle mass — the exact bug this was written to catch.
     Relies on: test_self_potential_is_mass_weighted (if that passes and
     this fails, there is a contradiction).
@@ -698,9 +694,9 @@ def test_self_potential_differs_from_bare_phi():
 
 def test_external_pot_is_mass_weighted():
     '''
-    Aim: Verify compute_external_pot returns m_i * Φ_ext,i (not bare Φ_ext)
+    Aim: Verify compute_external_pot returns m_i * phi_ext,i (not bare phi_ext)
     by comparing to the analytical Kepler potential m * (-G * M / r).
-    Uses non-unit masses so m*Φ ≠ Φ.
+    Uses non-unit masses so m*phi ≠ phi.
 
     If this fails: compute_external_pot is not multiplying by mass, or
     the galpy bridge is returning wrong potential values.
@@ -719,7 +715,7 @@ def test_external_pot_is_mass_weighted():
 
 def test_PE_includes_mass_on_external():
     '''
-    Aim: Verify PE() = m*Φ_self + m*Φ_ext by computing both terms
+    Aim: Verify PE() = m*phi_self + m*phi_ext by computing both terms
     analytically with non-unit masses. This is the main end-to-end check
     that the total PE has mass factors on BOTH the self and external terms.
 
@@ -745,7 +741,7 @@ def test_PE_external_without_mass_is_wrong():
     '''
     Aim: Negative sanity check — verify PE does NOT match the value you
     would get if mass were missing from the external potential term.
-    Computes the "wrong" answer (m*Φ_self + Φ_ext) and asserts PE differs.
+    Computes the "wrong" answer (m*phi_self + phi_ext) and asserts PE differs.
 
     If this fails: PE() is not multiplying mass onto the external potential
     — the exact bug this was written to catch.
@@ -766,11 +762,11 @@ def test_PE_external_without_mass_is_wrong():
 def test_system_energy_analytical():
     '''
     Aim: Verify system_energy() matches a fully hand-computed value:
-    E = Σ(½ m |v|²) + (-G m0 m1 / r) + Σ(-m_i G M_ext / r_i).
-    The ½ on the self-PE double-counting cancels with the pairwise sum.
+    E = sum(0.5 m |v|^2) + (-G m0 m1 / r) + sum(-m_i G M_ext / r_i).
+    The 0.5 on the self-PE double-counting cancels with the pairwise sum.
     All values are analytical — no Sim accessors in the expected value.
 
-    If this fails: system_energy has a wrong coefficient (e.g. missing ½
+    If this fails: system_energy has a wrong coefficient (e.g. missing 0.5
     on self-PE), a missing mass factor on any term, or wrong signs.
     Relies on: _direct_summation being correct, galpy bridge being correct.
     This is the strongest energy test — independent of all other accessors.
@@ -928,21 +924,18 @@ def test_no_caching_without_method_raises_error():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
-    with pytest.raises(ValueError, match="No cached results available"):
+    with pytest.raises(ValueError, match="`use_cached` is False but no `method` was provided"):
         sim.self_gravity(t=0, use_cached=False)
 
 def test_caching_defaults_to_false_before_run():
     '''
-    Test that use_cached defaults to False before run(), so calling an
-    accessor without a method raises the "must provide a method" error
-    (not a cache-lookup error).
+    Test that calling an accessor before run() with no method raises
+    an informative error about the simulation not having been run.
     '''
     sim = _caching_test_sim()
-    # No explicit use_cached → decorator should resolve to False (pre-run).
-    # With method=None that triggers the "must provide a method" error.
-    with pytest.raises(ValueError, match="No cached results available"):
+    with pytest.raises(ValueError, match="No cached results available .* the simulation has not been run yet"):
         sim.self_gravity(t=0)
-    with pytest.raises(ValueError, match="No cached results available"):
+    with pytest.raises(ValueError, match="No cached results available .* the simulation has not been run yet"):
         sim.self_potential(t=0)
 
 def test_caching_fails_if_run_did_not_cache():
@@ -955,3 +948,130 @@ def test_caching_fails_if_run_did_not_cache():
         sim.self_potential(t=0, use_cached=True)
     with pytest.raises(ValueError, match="Cached self-gravity is not available"):
         sim.self_gravity(t=0, use_cached=True)
+
+def test_vectorized_t_fails_without_cached_results():
+    '''
+    Test that passing an array of times to self_gravity without cached results raises an error, since the method-specific computation does not support vectorized t.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
+    with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+        sim.self_gravity(t=...)
+    
+def test_vectorized_t_works_with_cache():
+    '''
+    Test that passing an array of times to self_gravity with cached results returns an array of the correct shape.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
+    acc = sim.self_gravity(t=..., use_cached=True)
+    assert acc.shape == (len(sim._times), sim._positions.shape[1], 3)
+
+def test_vectorized_t_fails_if_method_provided():
+    '''
+    Test that passing an array of times to self_gravity with a method specified raises an error, 
+    since method-specific computations do not support vectorized t.
+    '''
+    sim = _caching_test_sim()
+    _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
+    with pytest.raises((ValueError, TypeError), match="Cannot compute on-the-fly for all times."):
+        sim.self_gravity(t=..., method='direct', eps=0.0)
+
+
+# --- Output shape tests: single t vs. ellipsis -------------------------------------------- #
+
+def _shape_test_sim():
+    '''Create and run a sim for shape testing.'''
+    sim = Sim()
+    sim.add_particles('a',
+                      pos=np.random.normal(size=(20, 3)),
+                      vel=np.random.normal(size=(20, 3)),
+                      mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=(20,))))
+    sim.run(t_end=1, dt=0.1, dt_out=0.1, method='direct', eps=0.05,
+            cache_self_gravity=True, cache_self_potential=True)
+    return sim
+
+_SHAPE_SIM = _shape_test_sim()
+_N_SNAP = len(_SHAPE_SIM._times)       # 11
+_N_PART = _SHAPE_SIM._mass.shape[0]    # 20
+
+
+# --- self_potential shapes ---
+
+def test_self_potential_single_t_shape():
+    result = _SHAPE_SIM.self_potential(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_self_potential_ellipsis_shape():
+    result = _SHAPE_SIM.self_potential(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+# --- self_gravity shapes ---
+
+def test_self_gravity_single_t_shape():
+    result = _SHAPE_SIM.self_gravity(t=0)
+    assert result.shape == (_N_PART, 3)
+
+def test_self_gravity_ellipsis_shape():
+    result = _SHAPE_SIM.self_gravity(t=...)
+    assert result.shape == (_N_SNAP, _N_PART, 3)
+
+# --- KE shapes ---
+
+def test_KE_single_t_shape():
+    result = _SHAPE_SIM.KE(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_KE_ellipsis_shape():
+    result = _SHAPE_SIM.KE(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+# --- PE shapes ---
+
+def test_PE_single_t_shape():
+    result = _SHAPE_SIM.PE(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_PE_ellipsis_shape():
+    result = _SHAPE_SIM.PE(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+# --- energy (per-particle) shapes ---
+
+def test_energy_single_t_shape():
+    result = _SHAPE_SIM.energy(t=0)
+    assert result.shape == (_N_PART,)
+
+def test_energy_ellipsis_shape():
+    result = _SHAPE_SIM.energy(t=...)
+    assert result.shape == (_N_SNAP, _N_PART)
+
+# --- system_energy shapes ---
+
+def test_system_energy_single_t_shape():
+    result = _SHAPE_SIM.system_energy(t=0)
+    assert np.isscalar(result) or result.shape == ()
+
+def test_system_energy_ellipsis_shape():
+    result = _SHAPE_SIM.system_energy(t=...)
+    assert result.shape == (_N_SNAP,)
+
+# --- dE shapes ---
+
+def test_dE_shape():
+    result = _SHAPE_SIM.dE()
+    assert result.shape == (_N_SNAP,)
+
+# --- compute on-the-fly: single t only ---
+
+def test_self_potential_compute_single_t_shape():
+    result = _SHAPE_SIM.self_potential(t=0, method='direct', eps=0.05)
+    assert result.shape == (_N_PART,)
+
+def test_self_gravity_compute_single_t_shape():
+    result = _SHAPE_SIM.self_gravity(t=0, method='direct', eps=0.05)
+    assert result.shape == (_N_PART, 3)
+
+def test_system_energy_compute_single_t_shape():
+    result = _SHAPE_SIM.system_energy(t=0, method='direct', eps=0.05)
+    assert np.isscalar(result) or result.shape == ()

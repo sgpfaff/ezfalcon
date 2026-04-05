@@ -49,6 +49,7 @@ SUPPORTED_POTENTIALS = (
     potential.DehnenBarPotential,
     potential.SpiralArmsPotential,
     potential.interpRZPotential,
+    potential.CompositePotential
 )
 
 UNVECTORIZED_POTENTIALS = (
@@ -70,12 +71,31 @@ UNVECTORIZED_POTENTIALS = (
 
 RMIN = 1e-15 * u.kpc
 
+def _is_vectorized(pot):
+    '''Check if a potential (or all members of a composite) supports vectorized evaluation.'''
+    if isinstance(pot, potential.CompositePotential):
+        return all(isinstance(p, SUPPORTED_POTENTIALS) for p in pot)
+    return isinstance(pot, SUPPORTED_POTENTIALS)
+
 def _scalar_loop(func, R, z, phi, **kwargs):
     '''
     Loop over inputs to apply a galpy function that doesn't support vectorization.
     '''
     return u.Quantity([func(R_i, z_i, phi=phi_i, **kwargs) 
                        for R_i, z_i, phi_i in zip(R, z, phi)])
+
+def _eval_force(pot, force_attr, R, z, phi, **kwargs):
+    '''Evaluate a force method on a single potential, choosing vectorized or scalar loop.'''
+    func = getattr(pot, force_attr)
+    if _is_vectorized(pot):
+        result = func(R, z, phi=phi, **kwargs)
+    else:
+        result = _scalar_loop(func, R, z, phi, **kwargs)
+    # galpy returns plain float 0.0 instead of Quantity when phitorque is zero;
+    # ensure we always return a Quantity for consistent arithmetic.
+    if not isinstance(result, u.Quantity):
+        result = result * u.km**2 / u.s**2
+    return result
 
 def _check_supported_pot(pot):
     if isinstance(pot, UNVECTORIZED_POTENTIALS):
@@ -95,7 +115,11 @@ def _check_physical(obj):
         obj.turn_physical_on(ro=8.0, vo=220.0)
 
 def _galpy_pot_to_pot_fn(pot):
-    vectorized = isinstance(pot, SUPPORTED_POTENTIALS)
+    '''
+    Convert a galpy potential to a function that 
+    returns potentials in ezfalcon internal units.
+    '''
+    vectorized = _is_vectorized(pot)
     def pot_fn(pos, t):
         R, phi, z = rect_to_cyl(*np.array(pos).T*u.kpc)
         if vectorized:
@@ -122,10 +146,25 @@ def _galpy_pot_to_acc_fn(pot):
         in ezfalcon internal units.
 
     '''
-    vectorized = isinstance(pot, SUPPORTED_POTENTIALS)
+    is_composite = isinstance(pot, potential.CompositePotential)
+    if is_composite:
+        # galpy's turn_physical_on() on a composite doesn't propagate to members;
+        # we need physical on per-member for the phitorque workaround.
+        for p in pot:
+            p.turn_physical_on()
+    vectorized = _is_vectorized(pot)
     def acc_fn(pos, t):
         R, phi, z = rect_to_cyl(*np.array(pos).T*u.kpc)
-        if vectorized:
+        kw = dict(quantity=True, t=t*u.Myr)
+        if is_composite:
+            # Workaround: galpy CompositePotential.phitorque uses @physical_conversion("force")
+            # instead of "energy", returning phitorque/R. Sum individual phitorques instead,
+            # dispatching vectorized vs scalar per-member.
+            aR = _eval_force(pot, 'Rforce', R, z, phi, **kw)
+            _zero_torque = 0. * u.km**2 / u.s**2
+            aphitorque = sum((_eval_force(p, 'phitorque', R, z, phi, **kw) for p in pot), _zero_torque)
+            az = _eval_force(pot, 'zforce', R, z, phi, **kw)
+        elif vectorized:
             aR = pot.Rforce(R, z, phi=phi, quantity=True, t=t*u.Myr)
             aphitorque = pot.phitorque(R, z, phi=phi, quantity=True, t=t*u.Myr)
             az = pot.zforce(R, z, phi=phi, quantity=True, t=t*u.Myr)

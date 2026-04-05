@@ -1,4 +1,38 @@
 #!/usr/bin/env python
-from setuptools import setup
+import numpy as np
+from setuptools import setup, Extension
 
-setup()
+_falcon_src_dir = "ezfalcon/dynamics/acceleration/_falcON_src"
+
+_falcon = Extension(
+    name="ezfalcon.dynamics.acceleration._falcon",
+    sources=[
+        "ezfalcon/dynamics/acceleration/_falcON_wrapper.cpp",
+        f"{_falcon_src_dir}/src/basic.cc",
+        f"{_falcon_src_dir}/src/body.cc",
+        f"{_falcon_src_dir}/src/gravity.cc",
+        f"{_falcon_src_dir}/src/kernel.cc",
+        f"{_falcon_src_dir}/src/tree.cc",
+        f"{_falcon_src_dir}/src/exception.cc",
+        f"{_falcon_src_dir}/src/numerics.cc",
+        f"{_falcon_src_dir}/src/io.cc",
+    ],
+    include_dirs=[
+        f"{_falcon_src_dir}/inc",
+        f"{_falcon_src_dir}/inc/public",
+        f"{_falcon_src_dir}/inc/utils",
+        np.get_include(),
+    ],
+    define_macros=[
+        ("falcON_DOUBLE", None),
+    ],
+    language="c++",
+)
+
+_direct_summation = Extension(
+    name="ezfalcon.dynamics.acceleration._direct_summation",
+    sources=["ezfalcon/dynamics/acceleration/_direct_wrapper.cpp"],
+    include_dirs=[np.get_include()],
+    language="c++",
+)
+setup(ext_modules=[_falcon, _direct_summation])

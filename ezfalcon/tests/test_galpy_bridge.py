@@ -69,10 +69,19 @@ SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS = [
     potential.SpiralArmsPotential(),
 ]
 
+EXAMPLE_GALPY_COMPOSITE_POTENTIALS = [
+    potential.MWPotential,
+    potential.NFWPotential() + potential.MiyamotoNagaiPotential(), # two vectorized potentials
+    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.MiyamotoNagaiPotential(), # unvectorized + vectorized
+    potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.DehnenBarPotential(), # two unvectorized potentials
+]
+
 ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS + 
                                   SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
                                   SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS + 
-                                  SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS)
+                                  SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS +
+                                  EXAMPLE_GALPY_COMPOSITE_POTENTIALS)
+
 
 UNSUPPORTED_GALPY_POTENTIALS = [
     potential.DiskSCFPotential(),
@@ -183,7 +192,8 @@ def test_potential_match(galpy_potential):
     galpy's own potential evaluation.'''
     ez_pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     ez_pot = ez_pot_fn(FULL_TEST_GRID_POSITIONS, t=0)
-    if isinstance(galpy_potential, _galpy_bridge.UNVECTORIZED_POTENTIALS):
+    needs_scalar = isinstance(galpy_potential, _galpy_bridge.UNVECTORIZED_POTENTIALS) or not _galpy_bridge._is_vectorized(galpy_potential)
+    if needs_scalar:
         galpy_pot = np.array([
             galpy_potential(R, z, phi=p, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
             for R, z, p in zip(FULL_TEST_R, FULL_TEST_Z, FULL_TEST_PHI)
@@ -434,5 +444,5 @@ def test_interp_spherical_outside_grid():
         pytest.skip("interpSphericalPotential produces NaN outside rgrid (expected)")
     assert np.all(np.isfinite(acc))
 
-
+# --- 
     # TO ADD: galpy combo potential, time-dependent potential,

@@ -8,20 +8,21 @@ from ..dynamics import _integrate, self_gravity
 import galpy
 from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
 import functools
+import warnings
 
 _USE_CACHED_DEFAULT = object()  # sentinel for "caller didn't pass use_cached"
 
-def _check_use_cached(func):
+def _resolve_use_cached(func):
     '''
     Decorator that resolves *use_cached* dynamically:
       - If the caller didn't pass use_cached:
-          * method given  → use_cached = False  (compute on-the-fly)
-          * method absent → use_cached = _has_run (cache if available, else error)
+          * method given  -> use_cached = False  (compute on-the-fly)
+          * method absent -> use_cached = _has_run (cache if available, else error)
       - If the caller explicitly passed use_cached=True:
-          * before run()       → error (no cache exists)
-          * with method given  → error (conflicting intent)
+          * before run()       -> error (no cache exists)
+          * with method given   -> error (conflicting intent)
       - If the caller explicitly passed use_cached=False:
-          * method absent → error (need a method to compute)
+          * method absent  -> error (need a method to compute)
     '''
     @functools.wraps(func)
     def wrapper(*args, use_cached=_USE_CACHED_DEFAULT, method=None, **kwargs):
@@ -29,13 +30,11 @@ def _check_use_cached(func):
         explicit = use_cached is not _USE_CACHED_DEFAULT
 
         if not explicit:
-            # Auto-resolve: method given → compute; method absent → try cache
             if method is not None:
                 use_cached = False
             else:
                 use_cached = sim._has_run
         else:
-            # Explicit use_cached=True validations
             if use_cached and not sim._has_run:
                 raise ValueError("Cannot use cached results before run(). "
                     "Please set use_cached to False and provide a method "
@@ -47,12 +46,51 @@ def _check_use_cached(func):
                     "`use_cached` to False to specify a method for "
                     "computing self-gravity.")
 
-        # Final guard: not using cache but no method to compute with
         if not use_cached and method is None:
-            raise ValueError("No cached results available. Please specify "
-                "a method (e.g. method='direct') to compute self-gravity.")
+            if not explicit and not sim._has_run:
+                raise ValueError("No cached results available — the simulation "
+                    "has not been run yet. Please call run() first, or provide "
+                    "a method (e.g. method='direct') to compute on-the-fly.")
+            raise ValueError("`use_cached` is False but no `method` was provided. "
+                "Please specify a method (e.g. method='direct') to compute "
+                "self-gravity, or set `use_cached` to True.")
 
         return func(*args, use_cached=use_cached, method=method, **kwargs)
+    return wrapper
+
+
+def _resolve_t(func):
+    '''
+    Decorator that resolves *t* based on *use_cached*:
+      - use_cached=True  -> t can be ... (all snapshots) or int/float
+      - use_cached=False -> t must be a single snapshot (... is rejected)
+
+    Must be applied AFTER @_resolve_use_cached (i.e. listed BEFORE it
+    in stacked decorator order).
+    '''
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        sim = args[0]
+        use_cached = kwargs.get('use_cached', True)
+
+        # Extract t from positional args or kwargs
+        if len(args) > 1:
+            t = args[1]
+            args = (args[0],) + args[2:]
+        else:
+            t = kwargs.pop('t', ...)
+
+        if use_cached:
+            t = sim._ti(t, vectorized=True)
+        else:
+            if t is ...:
+                raise TypeError(
+                    "Cannot compute on-the-fly for all times. "
+                    "Please provide an integer index or a float time for t. "
+                    "You will have to manually loop over snapshots.")
+            t = sim._ti(t, vectorized=False)
+
+        return func(*args, t=t, **kwargs)
     return wrapper
 
 
@@ -71,14 +109,13 @@ class Sim:
         self._slices = {}         # component name -> slice
 
         # Snapshot arrays -- populated by run()
-        self._positions = None    # (n_snap, N, 3) kpc
-        self._velocities = None   # (n_snap, N, 3) kpc/Myr
-        self._cached_self_acc = None # (n_snap, N, 3) kpc/Myr²
-        #self.cached_ext_acc = None # (n_snap, N, 3) kpc/Myr²
-        #self.cached_potentials = None    # (n_snap, N) kpc²/Myr²
-        self._cached_self_pot = None   # (n_snap, N)
+        self._positions = None       # (n_snap, N, 3) kpc
+        self._velocities = None      # (n_snap, N, 3) kpc/Myr
+        self._cached_self_acc = None # (n_snap, N, 3) kpc/Myr^2
+        # self._cached_ext_acc = None  # (n_snap, N, 3) kpc/Myr^2
+        self._cached_self_pot = None # (n_snap, N)    kpc^2/Myr^2
   
-        self._times = None        # (n_snap,) Myr
+        self._times = None           # (n_snap,) Myr
         self._has_run = False
         self._self_gravity_on = True
         self._ext_acc_fns = []     # list of functions that take (pos, t) and return (N, 3) acc
@@ -102,13 +139,12 @@ class Sim:
                     print(f"Time index {t} is out of bounds for simulation with {len(self._times)} snapshots. Please provide an index within [-{len(self._times)}, {len(self._times)-1}].")
                     raise IndexError(f"Time index {t} is out of bounds for simulation with {len(self._times)} snapshots. Please provide an index within [-{len(self._times)}, {len(self._times)-1}].")
                 else:
-                    return t
+                    return int(t)
         else:
             if not isinstance(t, (float, np.floating)):
                 raise TypeError("t must be an int index, a float time, or ellipsis.")
             else:
                 if t < self._times[0] or t > self._times[-1]:
-                    print(self._times[0])
                     raise ValueError(f"t={t} Myr is out of bounds for simulation time range [{self._times[0]}, {self._times[-1]}] Myr.")
                 else:
                     return int(np.argmin(np.abs(self._times - t)))
@@ -129,9 +165,19 @@ class Sim:
     # --- Setup ---------------------------------------------------------------------------------                                                   
 
     def turn_self_gravity_on(self):
+        '''
+        Turn self-gravity on for the simulation. 
+        This is on by default.
+        '''
         self._self_gravity_on = True
 
     def turn_self_gravity_off(self):
+        '''
+        Turn self-gravity off for the simulation.
+
+        Methods the acceleration and potential due
+        to self-gravity will be zero.
+        '''
         self._self_gravity_on = False
 
     def add_particles(self, name, pos, vel, mass):
@@ -238,8 +284,7 @@ class Sim:
             raise TypeError("External potential must be a galpy Potential object.")
 
     def run(self, t_end, dt, dt_out, method='falcON', 
-            cache_self_gravity=True, cache_self_potential=True,
-            **kwargs):
+            cache_self_gravity=True, cache_self_potential=True, **kwargs):
         """
         Run the simulation to *t_end* [Myr].
 
@@ -262,14 +307,23 @@ class Sim:
             Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
         cache_self_potential : bool, optional
             Whether to cache the self-gravitational potential at each output snapshot. Default is True.
+        cache_ext_acc : bool, optional
+            Whether to cache the external acceleration at each output snapshot. Default is True.
+        cache_ext_pot : bool, optional
+            Whether to cache the external potential at each output snapshot. Default is True.
         **kwargs 
             Additional keyword arguments to pass to the gravity method. 
 
             For 'falcON', these include:
-            - eps: Gravitational softening length (kpc)
-            - theta: Tree opening angle. Smaller = more accurate but slower.
+            
+            - eps ((N,) array or scalar): Gravitational softening length (kpc)
+            - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
+            - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
 
             For 'direct', these include:
+            - eps (scalar): Gravitational softening length (kpc)
+
+            For 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
         """
         if dt <= 0 or dt_out <= 0 or t_end <= 0:
@@ -374,7 +428,7 @@ class Sim:
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
-            Default is ... (ellipsis), which returns the value at all times.
+            Default is -1, which returns the value at the last snapshot.
 
         Returns
         -------
@@ -478,8 +532,7 @@ class Sim:
     # --- Energy Accessors -----------------------------------------------------------------
 
     # --- Potential Energy --- #
-
-    def compute_external_pot(self, t=-1):
+    def compute_external_pot(self, t=...):
         '''
         External potential of particles at *t*.
 
@@ -499,12 +552,23 @@ class Sim:
             External potential at each snapshot.
             Units: `Msun kpc^2 / Myr^2`
         '''
-        ext_pot = np.zeros(self._mass.shape[0])
-        for fn in self._ext_pot_fns:
-            ext_pot += fn(self.pos(t=t), t=t)
+        t = self._ti(t, vectorized=True)
+        if isinstance(t, (int, np.integer)):
+            ext_pot = np.zeros(self._mass.shape[0])
+            for fn in self._ext_pot_fns:
+                ext_pot += fn(self.pos(t=t), t=t)
+        else:
+            warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
+            if t is ...:
+                t = self._times
+            ext_pot = np.zeros((len(t), self._mass.shape[0]))
+            for fn in self._ext_pot_fns:
+                for i, t_i in enumerate(t):
+                    ext_pot[i] += fn(self.pos(t=t_i), t=t_i)
         return self._mass * ext_pot
     
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def self_potential(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Self-gravitational potential of particles at *t*.
@@ -549,7 +613,8 @@ class Sim:
             _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False)), self._mass, method=method, **kwargs)
             return self._mass * self_pot
     
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def PE(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Total potential energy of particles at *t*.
@@ -585,7 +650,7 @@ class Sim:
             Total potential energy of each particle at each snapshot.
             Units: `Msun kpc^2 / Myr^2`
         '''
-        return self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs) + self.compute_external_pot(t=self._ti(t, vectorized=False))
+        return self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs) + self.compute_external_pot(t=t)
     
     # --- Kinetic Energy --- #
 
@@ -612,10 +677,11 @@ class Sim:
         return 0.5 * self._mass * np.sum(self.vel(t=t) ** 2, axis=-1)
 
     # --- Total Energy --- #
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def energy(self, t=..., use_cached=True, method=None, **kwargs):
         """
-        Energy of particles at time t.
+        Energy of particles at *t*.
         
         Units:  `Msun kpc^2 / Myr^2`
 
@@ -650,10 +716,11 @@ class Sim:
         """
         return self.KE(t=t) + self.PE(t=t, method=method, use_cached=use_cached, **kwargs)
     
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def system_energy(self, t=..., use_cached=True, method=None,  **kwargs):
         r"""
-        Total conserved system energy at time t.
+        Total conserved system energy at *t*.
         
         Units: `Msun kpc^2 / Myr^2`
 
@@ -664,7 +731,7 @@ class Sim:
 
         Parameters
         ----------
-        t : float or int or None, optional
+        t : float or int, optional
             Time of snapshot to access.
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
@@ -693,11 +760,14 @@ class Sim:
             Total energy of the system at time t.
             Units: :math:`Msun kpc^2 / Myr^2`
         """
-        t = self._ti(t, vectorized=False)
-        return np.sum(self.KE(t=t)) + 0.5 * np.sum(self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs)) + np.sum(self.compute_external_pot(t=self._ti(t, vectorized=False)))
+        return (np.sum(self.KE(t=t), axis=-1) + 
+                0.5 * np.sum(self.self_potential(t=t, method=method, 
+                                                 use_cached=use_cached, **kwargs), axis=-1) + 
+                np.sum(self.compute_external_pot(t=t), axis=-1)
+                )
     
-    @_check_use_cached
-    def dE(self, use_cached=True, method=None, **kwargs):
+    @_resolve_use_cached
+    def dE(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Percent change in total energy over the simulation time.
 
@@ -717,21 +787,31 @@ class Sim:
             For 'direct', these include:
             - eps: Gravitational softening length (kpc)
         use_cached : bool, optional
-            Whether to use cached self-potential from integrationif available. Default is True.
+            Whether to use cached self-potential from integration if available. Default is True.
 
         Returns
         -------
         dE : (n_snaps,) array
             Percent change in total energy at each snapshot.
         '''
-        Es = np.array([self.system_energy(t=i, method=method, use_cached=use_cached, **kwargs) for i in range(len(self.times))])
-        return np.abs((Es - Es[0]) / Es[0])
+        if use_cached:
+            Es = self.system_energy(t=t, use_cached=use_cached, method=method, **kwargs)
+            E0 = Es[0]
+        else:
+            if t is ...:
+                Es = np.array([self.system_energy(t=t_i, use_cached=False, method=method, **kwargs) for t_i in self._times])
+                E0 = Es[0]
+            else:
+                Es = self.system_energy(t=t, use_cached=False, method=method, **kwargs)
+                E0 = self.system_energy(t=0, use_cached=False, method=method, **kwargs)
+        return np.abs((Es - E0) / E0)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
     # --- Self-Gravity --- #
 
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def self_gravity(self, t=..., use_cached=True, method=None,  **kwargs):
         '''
         Compute the self-gravity acceleration of each 
@@ -773,7 +853,8 @@ class Sim:
         else:
             return np.zeros_like(self.pos(t=t))
         
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def self_ax(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         x-component of self-gravity acceleration on each particle in the component at *t*.
@@ -818,7 +899,8 @@ class Sim:
         '''
         return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 0]
     
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def self_ay(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         y-component of self-gravity acceleration on each particle in the component at *t*.
@@ -859,7 +941,8 @@ class Sim:
         '''
         return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 1]
     
-    @_check_use_cached
+    @_resolve_use_cached
+    @_resolve_t
     def self_az(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         z-component of self-gravity acceleration on each particle in the component at *t*.
@@ -998,8 +1081,9 @@ class Sim:
         return self.external_acc(t=t)[:, 2]
     
     # --- Diagnostics -----------------------------------------------------------------
-    
-    def plot_diagnostic(self, method=None, use_cached=True, filename=None, **kwargs):
+    @_resolve_use_cached
+    def plot_diagnostic(self, method=None, use_cached=True, nsnap=None, 
+                        filename=None, **kwargs):
         '''
         Plot global energy conservation as a function of 
         time.
@@ -1012,6 +1096,8 @@ class Sim:
             - 'direct': direct summation.
         use_cached : bool, optional
             Whether to use cached self-gravity from integration if available. Default is True.
+        nsnap : int, optional
+            Number of snapshots to use. If None (default), will use all snapshots.
         filename : str, optional
             If provided, will save the plot to the given filename
             instead of showing it.
@@ -1022,9 +1108,12 @@ class Sim:
             - theta: Tree opening angle
         '''
         import matplotlib.pyplot as plt
+
+        skip_every = 1 if nsnap is None else max(1, len(self.times) // nsnap)
+        
         plt.figure(figsize=(6,4))
-        dE = self.dE(method=method, use_cached=use_cached, **kwargs)
-        plt.plot(self.times, dE, c='k')
+        dE = self.dE(t=..., use_cached=use_cached, method=method, **kwargs)[::skip_every]
+        plt.plot(self.times[::skip_every], dE, c='k')
         plt.yscale('log')
         plt.xlabel("Time (Myr)")
         plt.ylabel("$|\Delta E / E_0|$")
