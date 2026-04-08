@@ -1,1 +1,1 @@
-from .galpy_tools import galpydfsampler, galpy_orbit_to_ezfalcon
+from .galpy_tools import galpydfsampler, galpy_orbit_to_ezfalcon, mkKing_galpy, mkNFW_galpy, mkPlummer_galpy
