@@ -10,88 +10,7 @@ from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _ch
 import functools
 import warnings
 
-_USE_CACHED_DEFAULT = object()  # sentinel for "caller didn't pass use_cached"
-
-def _resolve_use_cached(func):
-    '''
-    Decorator that resolves *use_cached* dynamically:
-      - If the caller didn't pass use_cached:
-          * method given  -> use_cached = False  (compute on-the-fly)
-          * method absent -> use_cached = _has_run (cache if available, else error)
-      - If the caller explicitly passed use_cached=True:
-          * before run()       -> error (no cache exists)
-          * with method given   -> error (conflicting intent)
-      - If the caller explicitly passed use_cached=False:
-          * method absent  -> error (need a method to compute)
-    '''
-    @functools.wraps(func)
-    def wrapper(*args, use_cached=_USE_CACHED_DEFAULT, method=None, **kwargs):
-        sim = args[0]
-        explicit = use_cached is not _USE_CACHED_DEFAULT
-
-        if not explicit:
-            if method is not None:
-                use_cached = False
-            else:
-                use_cached = sim._has_run
-        else:
-            if use_cached and not sim._has_run:
-                raise ValueError("Cannot use cached results before run(). "
-                    "Please set use_cached to False and provide a method "
-                    "for computing self-gravity.")
-            if use_cached and method is not None:
-                raise ValueError("`method` should not be specified if "
-                    "`use_cached` is True, since the cached self-gravity "
-                    "was computed using a specific method. Please set "
-                    "`use_cached` to False to specify a method for "
-                    "computing self-gravity.")
-
-        if not use_cached and method is None:
-            if not explicit and not sim._has_run:
-                raise ValueError("No cached results available — the simulation "
-                    "has not been run yet. Please call run() first, or provide "
-                    "a method (e.g. method='direct') to compute on-the-fly.")
-            raise ValueError("`use_cached` is False but no `method` was provided. "
-                "Please specify a method (e.g. method='direct') to compute "
-                "self-gravity, or set `use_cached` to True.")
-
-        return func(*args, use_cached=use_cached, method=method, **kwargs)
-    return wrapper
-
-
-def _resolve_t(func):
-    '''
-    Decorator that resolves *t* based on *use_cached*:
-      - use_cached=True  -> t can be ... (all snapshots) or int/float
-      - use_cached=False -> t must be a single snapshot (... is rejected)
-
-    Must be applied AFTER @_resolve_use_cached (i.e. listed BEFORE it
-    in stacked decorator order).
-    '''
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        sim = args[0]
-        use_cached = kwargs.get('use_cached', True)
-
-        # Extract t from positional args or kwargs
-        if len(args) > 1:
-            t = args[1]
-            args = (args[0],) + args[2:]
-        else:
-            t = kwargs.pop('t', ...)
-
-        if use_cached:
-            t = sim._ti(t, vectorized=True)
-        else:
-            if t is ...:
-                raise TypeError(
-                    "Cannot compute on-the-fly for all times. "
-                    "Please provide an integer index or a float time for t. "
-                    "You will have to manually loop over snapshots.")
-            t = sim._ti(t, vectorized=False)
-
-        return func(*args, t=t, **kwargs)
-    return wrapper
+from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
 
 class Sim:
@@ -282,6 +201,151 @@ class Sim:
             self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
         else:
             raise TypeError("External potential must be a galpy Potential object.")
+    
+    def add_external_acc(self, acc_fn):
+        '''
+        Add an external acceleration function to the simulation.
+
+        Parameters
+        ----------
+        acc_fn : function
+            A function that takes (pos, t) and returns (N, 3) array of accelerations.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        TypeError
+            If acc_fn is not a callable function.
+        '''
+        # if callable(acc_fn):
+        #     self._ext_acc_fns.append(acc_fn)
+        # else:
+        #     raise TypeError("External acceleration must be a callable function that takes (pos, t) and returns (N, 3) array of accelerations.")
+        raise NotImplementedError("Adding external accelerations as functions is not yet implemented. Please add your external potential as a galpy Potential and use add_external_pot().")
+
+    def add_subhalos(self, pos, vel, mass):
+        '''
+        Add Plummer sphere subhalos as a component to the simulation. 
+
+        Parameters
+        ----------
+        pos : (N, 3) array
+            Initial positions of subhalos.
+            Units: `kpc`
+        vel : (N, 3) array
+            Initial velocities of subhalos.
+            Units: `kpc/Myr`
+        mass : (N,) array
+            Masses of subhalos.
+            Units: `Msun`
+
+        Returns
+        -------
+        None
+        
+        Raises
+        ------
+        ValueError
+            If the input arrays have incompatible shapes.
+        TypeError
+            If the input types are incorrect.
+        RuntimeError
+            If the simulation has already been run.
+        '''
+        raise NotImplementedError("Adding subhalos as Plummer spheres is not yet implemented. Please sample subhalo particles with galpysampler() and add them as a component with add_particles().")
+
+    def tag(self, name, mask):
+        '''
+        Define a new component based on a mask.
+        '''
+        raise NotImplementedError("Tagging components by mask is not yet implemented.")
+    
+    def _resolve_eps(self, eps):
+        """
+        Convert *eps* to a flat (N,) array.
+        
+        Accepts:
+        - scalar: same softening for all particles
+        - dict: ``{component_name: scalar_or_array}`` for every component.
+          Each value is either a scalar (broadcast to all particles in that
+          component) or an array whose length matches the component's particle
+          count.  All components must be present.
+        """
+        if not isinstance(eps, dict):
+            if isinstance(eps, (int, float, np.number)):
+                return float(eps)
+            else:
+                raise TypeError(f"eps must be a scalar or dict, got {type(eps)}")
+        else:
+            # check for missing keys
+            missing_keys = set(self._slices.keys()) - set(eps.keys())
+            if missing_keys:
+                raise ValueError(f"eps dict is missing components: {missing_keys}. Please specify eps for all components: {set(self._slices.keys())}")
+            extra_keys = set(eps.keys()) - set(self._slices.keys())
+            if extra_keys:
+                raise ValueError(f"eps dict has unknown components: {extra_keys}. Known components are: {set(self._slices.keys())}")    
+            N = self._mass.shape[0]
+            eps_flat = np.empty(N, dtype=np.float64)
+            
+            for name, val in eps.items():
+                s = self._slices[name]
+                n_comp = s.stop - s.start
+                if isinstance(val, (int, float, np.number)):
+                    eps_flat[s] = float(val)
+                elif isinstance(val, np.ndarray) and val.ndim == 1 and val.shape[0] == n_comp:
+                    eps_flat[s] = val
+                else:
+                    raise ValueError(f"eps[{name!r}] must be a scalar or 1D array of length {n_comp}, got {type(val)} with shape {val.shape}")
+            return eps_flat
+
+
+    # def _resolve_eps(self, eps):
+    #     """
+    #     Convert *eps* to a flat (N,) array.
+
+    #     Accepts:
+    #     - scalar: same softening for all particles
+    #     - dict: ``{component_name: scalar_or_array}`` for every component.
+    #       Each value is either a scalar (broadcast to all particles in that
+    #       component) or an array whose length matches the component's particle
+    #       count.  All components must be present.
+    #     """
+    #     if not isinstance(eps, dict):
+    #         return eps  # scalar or array — pass through unchanged
+
+    #     N = self._mass.shape[0]
+    #     eps_flat = np.empty(N, dtype=np.float64)
+
+    #     missing = set(self._slices.keys()) - set(eps.keys())
+    #     if missing:
+    #         raise ValueError(
+    #             f"eps dict is missing components: {missing}. "
+    #             f"All components must be specified: {list(self._slices.keys())}"
+    #         )
+    #     extra = set(eps.keys()) - set(self._slices.keys())
+    #     if extra:
+    #         raise ValueError(
+    #             f"eps dict contains unknown components: {extra}. "
+    #             f"Known components: {list(self._slices.keys())}"
+    #         )
+
+    #     for name, val in eps.items():
+    #         s = self._slices[name]
+    #         n_comp = s.stop - s.start
+    #         val = np.asarray(val, dtype=np.float64)
+    #         if val.ndim == 0:
+    #             eps_flat[s] = val
+    #         elif val.ndim == 1 and val.shape[0] == n_comp:
+    #             eps_flat[s] = val
+    #         else:
+    #             raise ValueError(
+    #                 f"eps['{name}'] must be a scalar or array of length "
+    #                 f"{n_comp}, got shape {val.shape}"
+    #             )
+    #     return eps_flat
 
     def run(self, t_end, dt, dt_out, method='falcON', 
             cache_self_gravity=True, cache_self_potential=True, **kwargs):
@@ -307,29 +371,29 @@ class Sim:
             Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
         cache_self_potential : bool, optional
             Whether to cache the self-gravitational potential at each output snapshot. Default is True.
-        cache_ext_acc : bool, optional
-            Whether to cache the external acceleration at each output snapshot. Default is True.
-        cache_ext_pot : bool, optional
-            Whether to cache the external potential at each output snapshot. Default is True.
         **kwargs 
             Additional keyword arguments to pass to the gravity method. 
 
-            For 'falcON', these include:
+            eps can be provided as:
+
+            - scalar: same softening for every particle.
+            - dict: ``{component_name: scalar_or_array}`` per component.
+              Each value is a scalar (applied to all particles in that
+              component) or an array matching the component's particle count.
+              All components must be present in the dict.
+
+            Other kwargs for 'falcON':
             
-            - eps ((N,) array or scalar): Gravitational softening length (kpc)
             - theta (float, optional): Tree opening angle. Default is 0.6. Smaller = more accurate but slower.
             - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
-
-            For 'direct', these include:
-            - eps (scalar): Gravitational softening length (kpc)
-
-            For 'direct_C', these include:
-            - eps: Gravitational softening length (kpc)
         """
         if dt <= 0 or dt_out <= 0 or t_end <= 0:
             raise ValueError("dt, dt_out, and t_end must be positive.")
         if dt_out < dt:
             raise ValueError("dt_out must be greater than or equal to dt.")
+
+        if 'eps' in kwargs:
+            kwargs['eps'] = self._resolve_eps(kwargs['eps'])
         
         (self._positions, self._velocities, self._times,
          self._cached_self_acc, self._cached_self_pot) = _integrate(
@@ -659,7 +723,7 @@ class Sim:
         Azimuthal velocities at *t* (for both spherical and cylindrical coordinates).
 
         The component of the velocity vector along the azimuthal direction, 
-        i.e. :math:`v_{phi} = (x*v_y - y*v_x) / (x^2 + y^2)`.*
+        i.e. :math:`v_{phi} = (x*v_y - y*v_x) / (x^2 + y^2)`.
 
         Units: `rad / Myr`
 
@@ -886,6 +950,7 @@ class Sim:
             Units: `Msun kpc^2 / Myr`
         '''
         return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 0]
+    
     def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         y-component of particle angular momentum at *t* about *center*.
@@ -913,6 +978,7 @@ class Sim:
             Units: `Msun kpc^2 / Myr`
         '''
         return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 1]
+    
     def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         z-component of particle angular momentum at *t* about *center*.
@@ -999,6 +1065,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method. 
@@ -1007,7 +1074,7 @@ class Sim:
             - eps: Gravitational softening length (kpc)
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
 
         Returns
@@ -1045,6 +1112,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method. 
@@ -1053,7 +1121,7 @@ class Sim:
             - eps: Gravitational softening length (`kpc`)
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (`kpc`)
 
         Returns
@@ -1109,6 +1177,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method. 
@@ -1117,7 +1186,7 @@ class Sim:
             - eps: Gravitational softening length (kpc)
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
         
         Returns
@@ -1154,8 +1223,8 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
-        
         **kwargs
             Additional keyword arguments to pass to the gravity method.
 
@@ -1163,7 +1232,7 @@ class Sim:
             - eps: Gravitational softening length (kpc)
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
 
         Returns
@@ -1188,6 +1257,7 @@ class Sim:
         method : str
             Method to use for computing self-gravity. Included options are:
             - 'falcON': fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
@@ -1196,7 +1266,7 @@ class Sim:
             - eps: Gravitational softening length (kpc)
             - theta: Tree opening angle (default 0.6). Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps: Gravitational softening length (kpc)
         use_cached : bool, optional
             Whether to use cached self-potential from integration if available. Default is True.
@@ -1226,8 +1296,8 @@ class Sim:
     @_resolve_t
     def self_gravity(self, t=..., use_cached=True, method=None,  **kwargs):
         '''
-        Compute the self-gravity acceleration of each 
-        particle in the component at *t*.
+        The self-gravity acceleration (ax, ay, az) 
+        of each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1243,6 +1313,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         
         **kwargs
@@ -1269,7 +1340,7 @@ class Sim:
     @_resolve_t
     def self_ax(self, t=..., use_cached=True, method=None, **kwargs):
         '''
-        x-component of self-gravity acceleration on each particle in the component at *t*.
+        x-component of self-gravity acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1285,6 +1356,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
@@ -1297,7 +1369,7 @@ class Sim:
                 Tree opening angle for pyfalcon.
                 Smaller = more accurate but slower.
 
-            For 'direct', these include:
+            For 'direct' and 'direct_C', these include:
             - eps : float
                 Gravitational softening length.
                 Units: kpc
@@ -1315,7 +1387,7 @@ class Sim:
     @_resolve_t
     def self_ay(self, t=..., use_cached=True, method=None, **kwargs):
         '''
-        y-component of self-gravity acceleration on each particle in the component at *t*.
+        y-component of self-gravity acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1332,6 +1404,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': direct summation.
         **kwargs
             Additional keyword arguments to pass to the gravity method.
@@ -1357,7 +1430,7 @@ class Sim:
     @_resolve_t
     def self_az(self, t=..., use_cached=True, method=None, **kwargs):
         '''
-        z-component of self-gravity acceleration on each particle in the component at *t*.
+        z-component of self-gravity acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1371,6 +1444,7 @@ class Sim:
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON': Use the fast multipole method implemented in falcON.
+            - 'direct_C': direct summation in C.
             - 'direct': Use direct summation.
         use_cached : bool, optional
             Whether to use cached self-gravity from integration
@@ -1399,8 +1473,7 @@ class Sim:
 
     def external_acc(self, t=-1):
         '''
-        Total external acceleration on each particle 
-        in the component at *t*.
+        Total external acceleration on each particle at *t*.
         Units: `kpc / Myr^2`
 
         Parameters
@@ -1425,7 +1498,7 @@ class Sim:
     
     def external_ax(self, t=-1):
         '''
-        x-component of external acceleration on each particle in the component at *t*.
+        x-component of external acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1448,7 +1521,7 @@ class Sim:
 
     def external_ay(self, t=-1):
         '''
-        y-component of external acceleration on each particle in the component at *t*.
+        y-component of external acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 
@@ -1471,7 +1544,7 @@ class Sim:
     
     def external_az(self, t=-1):
         '''
-        z-component of external acceleration on each particle in the component at *t*.
+        z-component of external acceleration on each particle at *t*.
         
         Units: `kpc / Myr^2`
 

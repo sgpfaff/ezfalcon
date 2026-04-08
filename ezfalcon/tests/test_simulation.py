@@ -1589,3 +1589,5 @@ def test_xy_diagonal_tangential_motion():
     assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-14)
     assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-14)
     assert sim.vphi(t=0)[0] == pytest.approx(1.0)
+
+# --- _resolve_eps -------------------------------------------------------------------------------- #
