@@ -37,10 +37,12 @@ def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):
         - kernel (int, optional): Softening kernel: 0=Plummer, 1=default (~r^-7), 2,3=faster decay.
 
         For 'direct', these include:
-        - eps: Gravitational softening length (kpc)
+        - eps: Gravitational softening length (kpc), scalar or (N,) array.
+          When array, pairwise softening uses arithmetic mean.
 
         For 'direct_C', these include:
-        - eps: Gravitational softening length (kpc)
+        - eps: Gravitational softening length (kpc), scalar or (N,) array.
+          When array, pairwise softening uses arithmetic mean.
 
     Returns
     -------
@@ -62,6 +64,8 @@ def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):
             raise ValueError("Must provide 'eps' keyword argument for falcON method.")
         else:
             eps = kwargs.get('eps', 0.05)
+            if type(eps) is np.ndarray and len(eps) != len(mass):
+                raise ValueError(f"If 'eps' is an array, it must have the same length as 'mass'. Got len(eps)={len(eps)} and len(mass)={len(mass)}.")   
             theta = kwargs.get('theta', 0.6)
             kernel = kwargs.get('kernel', 1)
         if set(kwargs.keys()) - {'eps', 'theta', 'kernel'}:
@@ -72,6 +76,8 @@ def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):
             raise ValueError("Must provide 'eps' keyword argument for direct_C summation method.")
         else:
             eps = kwargs.get('eps', 0.05)
+            if type(eps) is np.ndarray and len(eps) != len(mass):
+                raise ValueError(f"If 'eps' is an array, it must have the same length as 'mass'. Got len(eps)={len(eps)} and len(mass)={len(mass)}.")
         if set(kwargs.keys()) - {'eps'}:
             raise ValueError(f"{set(kwargs.keys()) - {'eps'}} is (are) invalid kwarg(s) for 'direct_C' self-gravity method. Only kwargs for self-gravity methods are allowed.")
         return _direct_summation_C(pos, mass, eps, return_potential)
@@ -80,6 +86,8 @@ def self_gravity(pos, mass, method='falcON', return_potential=True, **kwargs):
             raise ValueError("Must provide 'eps' keyword argument for direct summation method.")
         else:
             eps = kwargs.get('eps', 0.05)
+            if type(eps) is np.ndarray and len(eps) != len(mass):
+                raise ValueError(f"If 'eps' is an array, it must have the same length as 'mass'. Got len(eps)={len(eps)} and len(mass)={len(mass)}.")   
         if set(kwargs.keys()) - {'eps'}:
             raise ValueError(f"{set(kwargs.keys()) - {'eps'}} is (are) invalid kwarg(s) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed.")
         return _direct_summation(pos, mass, eps, return_potential)
@@ -98,7 +106,7 @@ def _falcON_gravity(pos, mass, eps, theta, kernel, return_potential):
     mass : (N,) array
         Masses of particles.
         Unit: Msun
-    eps : float
+    eps : float or (N,) array
         Gravitational softening length.
         Unit: kpc
     theta : float, optional
@@ -135,8 +143,9 @@ def _direct_summation_C(pos, mass, eps, return_potential):
     mass : (N,) array
         Masses of particles.
         Unit: Msun
-    eps : float
-        Gravitational softening length.
+    eps : float or (N,) array
+        Gravitational softening length(s). When an array, pairwise softening
+        is the arithmetic mean: eps_ij = (eps_i + eps_j) / 2.
         Unit: kpc
     return_potential : bool
         Whether to return the self-gravitational potential. Default is True.
@@ -168,8 +177,9 @@ def _direct_summation(pos, mass, eps, return_potential):
     mass : (N,) array
         Masses of particles.
         Unit: Msun
-    eps : float
-        Gravitational softening length.
+    eps : float or (N,) array
+        Gravitational softening length(s). When an array, pairwise softening
+        is the arithmetic mean: eps_ij = (eps_i + eps_j) / 2.
         Unit: kpc
     return_potential : bool
         Whether to return the self-gravitational potential. Default is True.
@@ -185,13 +195,15 @@ def _direct_summation(pos, mass, eps, return_potential):
         Unit: kpc^2 / Myr^2 (internal units)
     '''
     N = len(mass)
+    eps = np.broadcast_to(np.asarray(eps, dtype=float), (N,))
     acc = np.zeros_like(pos)
     if return_potential:
         pot = np.zeros(N)
     for i in range(N):
         mask = np.arange(N) != i
         dx = pos[mask] - pos[i]  # (N-1, 3)
-        r2 = np.sum(dx**2, axis=1) + eps**2  # (N-1,)
+        eps_ij = 0.5 * (eps[i] + eps[mask])  # (N-1,) pairwise softening
+        r2 = np.sum(dx**2, axis=1) + eps_ij**2  # (N-1,)
         inv_r3 = 1.0 / r2**1.5  # (N-1,)
         acc[i] = G_INTERNAL * np.sum(mass[mask, None] * dx * inv_r3[:, None], axis=0)
         if return_potential:
