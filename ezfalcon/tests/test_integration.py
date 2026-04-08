@@ -218,3 +218,6 @@ def test_return_neither_self_acceleration_nor_potential():
                                       return_self_potential=False, return_self_gravity=False)
     assert out[-1] is None
     assert out[-2] is None
+
+
+# Array eps

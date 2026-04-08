@@ -15,8 +15,8 @@ FROM_GALPY_TO_INTERNAL = {
     'vel': KMS_TO_KPCMYR,       # km/s --> kpc/Myr 
     'mass': 1.0,                # Msun --> Msun
     'time' : GYR_TO_MYR,        # Gyr --> Myr
-    'pot' : KMS_TO_KPCMYR**2,   # (km/s)² --> (kpc/Myr)²
-    'acc' : KMS_TO_KPCMYR,      # km/s/Myr --> kpc/Myr²
+    'pot' : KMS_TO_KPCMYR**2,   # (km/s)^2 --> (kpc/Myr)^2
+    'acc' : KMS_TO_KPCMYR,      # km/s/Myr --> kpc/Myr^2
 }
 
 SUPPORTED_POTENTIALS = (
@@ -113,6 +113,14 @@ def _check_physical(obj):
     if not obj._roSet and not obj._voSet:
         warnings.warn("The provided galpy potential has physical outputs turned off. Using galpy get_physical to determine ro and vo.")
         obj.turn_physical_on(ro=8.0, vo=220.0)
+    is_composite = isinstance(obj, potential.CompositePotential)
+    if is_composite:
+        # galpy's turn_physical_on() on a composite doesn't propagate to members;
+        # we need physical on per-member for the phitorque workaround.
+        for p in obj:
+            if not p._roSet and not p._voSet:
+                warnings.warn(f"Member potential {type(p).__name__} of the provided CompositePotential has physical outputs turned off. Using galpy get_physical to determine ro and vo for this member.")
+                p.turn_physical_on(ro=8.0, vo=220.0)
 
 def _galpy_pot_to_pot_fn(pot):
     '''
@@ -146,13 +154,9 @@ def _galpy_pot_to_acc_fn(pot):
         in ezfalcon internal units.
 
     '''
-    is_composite = isinstance(pot, potential.CompositePotential)
-    if is_composite:
-        # galpy's turn_physical_on() on a composite doesn't propagate to members;
-        # we need physical on per-member for the phitorque workaround.
-        for p in pot:
-            p.turn_physical_on()
+
     vectorized = _is_vectorized(pot)
+    is_composite = isinstance(pot, potential.CompositePotential)
     def acc_fn(pos, t):
         R, phi, z = rect_to_cyl(*np.array(pos).T*u.kpc)
         kw = dict(quantity=True, t=t*u.Myr)

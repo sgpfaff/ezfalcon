@@ -109,3 +109,6 @@ def test_return_potential_false_returns_acc_only():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     out = _falcON_gravity(pos, mass, eps=0.0, theta=0.1, kernel=1, return_potential=False)
     assert isinstance(out, np.ndarray)
+
+
+# Array eps input

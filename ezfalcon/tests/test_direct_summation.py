@@ -110,3 +110,6 @@ def test_return_potential_false_returns_acc_only():
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
     out = _direct_summation(pos, mass, eps=0.0, return_potential=False)
     assert isinstance(out, np.ndarray)
+
+
+# Array eps input
