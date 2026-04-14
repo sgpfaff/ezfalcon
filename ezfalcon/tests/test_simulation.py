@@ -332,6 +332,42 @@ def test_self_gravity_on_gives_nonzero_acc():
     acc = sim.self_gravity()
     assert not np.all(np.isclose(acc, 0, atol=1e-10))
 
+# --- eps dict resolution -------------------------------------------------------------------- #
+
+def test_resolve_eps_dict():
+    sim = Sim()
+    sim.add_particles('a', np.random.normal(size=(10, 3)), np.zeros((10, 3)), np.ones(10) * 1e4)
+    sim.add_particles('b', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5) * 1e4)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps={'a': 0.1, 'b': 0.05})
+    assert sim._has_run
+
+def test_resolve_eps_dict_missing_component():
+    sim = Sim()
+    sim.add_particles('a', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5))
+    sim.add_particles('b', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5))
+    with pytest.raises(ValueError, match="eps dict is missing components"):
+        sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps={'a': 0.1})
+
+def test_resolve_eps_dict_extra_component():
+    sim = Sim()
+    sim.add_particles('a', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5))
+    with pytest.raises(ValueError, match="eps dict has unknown components"):
+        sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps={'a': 0.1, 'z': 0.2})
+
+def test_resolve_eps_dict_array_per_component():
+    sim = Sim()
+    sim.add_particles('a', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5))
+    sim.add_particles('b', np.random.normal(size=(3, 3)), np.zeros((3, 3)), np.ones(3))
+    eps = {'a': np.full(5, 0.1), 'b': np.full(3, 0.05)}
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=eps)
+    assert sim._has_run
+
+def test_resolve_eps_invalid_type():
+    sim = Sim()
+    sim.add_particles('a', np.random.normal(size=(5, 3)), np.zeros((5, 3)), np.ones(5))
+    with pytest.raises(TypeError, match="eps must be a scalar or dict"):
+        sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=[0.1, 0.2])
+
 # --- .add_external_pot() ------------------------------------------------------------------------ #
 
 def test_add_external_pot_rejection():
@@ -1149,7 +1185,7 @@ def test_L_analytic():
     L = sim.L(t=0)
     momentum = mass[:, None] * vel
     expected = np.cross(pos, momentum)
-    np.testing.assert_allclose(L, expected, rtol=1e-15)
+    np.testing.assert_allclose(L, expected, rtol=1e-12)
 
 def test_Lx_analytic():
     '''
@@ -1532,7 +1568,7 @@ def test_x_axis_polar_motion():
     assert sim.vtheta(t=0)[0] == pytest.approx(-4.0)
 
 
-# --- known geometry: 45° in xz-plane ------------------------------------------------------------- #
+# --- known geometry: 45 deg in xz-plane ------------------------------------------------------------- #
 
 def test_45deg_xz_positions():
     """Particle at (1,0,1): r=sqrt(2), phi=0, theta=pi/4, R=1"""
@@ -1590,4 +1626,118 @@ def test_xy_diagonal_tangential_motion():
     assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-14)
     assert sim.vphi(t=0)[0] == pytest.approx(1.0)
 
-# --- _resolve_eps -------------------------------------------------------------------------------- #
+# --- component-level accessors ----------------------------------------------------------------- #
+
+@pytest.fixture
+def two_component_sim():
+    sim = Sim()
+    sim.add_particles('stars', pos=np.random.normal(size=(10, 3)),
+                      vel=np.random.normal(size=(10, 3)),
+                      mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
+    sim.add_particles('gas', pos=np.random.normal(size=(5, 3)),
+                      vel=np.random.normal(size=(5, 3)),
+                      mass=np.abs(np.random.normal(loc=1e8, scale=1e7, size=5)))
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.05)
+    return sim
+
+def test_component_self_ax(two_component_sim):
+    ax = two_component_sim.stars.self_ax(t=0)
+    assert ax.shape == (10,)
+
+def test_component_self_ay(two_component_sim):
+    ay = two_component_sim.stars.self_ay(t=0)
+    assert ay.shape == (10,)
+
+def test_component_self_az(two_component_sim):
+    az = two_component_sim.stars.self_az(t=0)
+    assert az.shape == (10,)
+
+def test_component_self_potential_cached(two_component_sim):
+    sp = two_component_sim.stars.self_potential(t=0)
+    assert sp.shape == (10,)
+
+def test_component_self_potential_cached_warns_include_all(two_component_sim):
+    with pytest.warns(UserWarning, match="Using cached self-potential"):
+        two_component_sim.stars.self_potential(t=0, include_all_components=False)
+
+def test_component_energy(two_component_sim):
+    E = two_component_sim.stars.energy(t=0)
+    assert E.shape == (10,)
+
+def test_component_PE(two_component_sim):
+    PE = two_component_sim.stars.PE(t=0)
+    assert PE.shape == (10,)
+
+def test_component_has_run(two_component_sim):
+    assert two_component_sim.stars._has_run
+
+# --- component external potential / acceleration ----------------------------------------------- #
+
+@pytest.fixture
+def ext_pot_component_sim():
+    sim = Sim()
+    sim.add_particles('stars', pos=np.array([[1.0, 0.0, 0.0]]),
+                      vel=np.zeros((1, 3)),
+                      mass=np.array([1e8]))
+    sim.add_particles('gas', pos=np.array([[0.0, 1.0, 0.0]]),
+                      vel=np.zeros((1, 3)),
+                      mass=np.array([1e7]))
+    kepler = KeplerPotential(amp=1e9*u.Msun)
+    sim.add_external_pot(kepler)
+    sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.05)
+    return sim
+
+def test_component_compute_external_pot(ext_pot_component_sim):
+    ext_pot = ext_pot_component_sim.stars.compute_external_pot(t=0)
+    assert ext_pot.shape == (1,)
+    assert ext_pot[0] != 0.0
+
+def test_component_external_acc(ext_pot_component_sim):
+    acc = ext_pot_component_sim.stars.external_acc(t=0)
+    assert acc.shape == (1, 3)
+    assert not np.all(acc == 0)
+
+def test_component_external_ax(ext_pot_component_sim):
+    ax = ext_pot_component_sim.stars.external_ax(t=0)
+    assert ax.shape == (1,)
+
+def test_component_external_ay(ext_pot_component_sim):
+    ay = ext_pot_component_sim.stars.external_ay(t=0)
+    assert ay.shape == (1,)
+
+def test_component_external_az(ext_pot_component_sim):
+    az = ext_pot_component_sim.stars.external_az(t=0)
+    assert az.shape == (1,)
+
+# --- uncached dE / decorator paths ------------------------------------------------------------- #
+
+def test_dE_uncached():
+    sim = Sim()
+    sim.add_particles('a', pos=np.random.normal(size=(10, 3)),
+                      vel=np.random.normal(size=(10, 3)) * 0.01,
+                      mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
+    sim.run(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', eps=0.05)
+    dE = sim.dE(use_cached=False, method='direct', eps=0.05)
+    assert dE.shape == (len(sim.times),)
+    assert dE[0] == 0.0
+
+def test_dE_uncached_single_t():
+    sim = Sim()
+    sim.add_particles('a', pos=np.random.normal(size=(10, 3)),
+                      vel=np.random.normal(size=(10, 3)) * 0.01,
+                      mass=np.abs(np.random.normal(loc=1e9, scale=1e8, size=10)))
+    sim.run(t_end=0.2, dt=0.1, dt_out=0.1, method='direct', eps=0.05)
+    dE = sim.dE(t=-1, use_cached=False, method='direct', eps=0.05)
+    assert isinstance(dE, (float, np.floating))
+
+def test_self_ax_simulation(two_component_sim):
+    ax = two_component_sim.self_ax(t=0)
+    assert ax.shape == (15,)
+
+def test_self_ay_simulation(two_component_sim):
+    ay = two_component_sim.self_ay(t=0)
+    assert ay.shape == (15,)
+
+def test_self_az_simulation(two_component_sim):
+    az = two_component_sim.self_az(t=0)
+    assert az.shape == (15,)

@@ -5,9 +5,6 @@ Simulation class for ezfalcon.
 import numpy as np
 from .component import Component
 from ..dynamics import _integrate, self_gravity
-import galpy
-from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot, _ensure_pot, _iter_components
-import functools
 import warnings
 
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
@@ -194,6 +191,18 @@ class Sim:
             In this case
         
         '''
+        try:
+            import galpy.potential
+            from ..util._galpy_bridge import (
+                _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
+                _check_physical, _check_supported_pot,
+                _ensure_pot, _iter_components,
+            )
+        except ImportError:
+            raise ImportError(
+                "galpy is required for external potentials. "
+                "Install it with: pip install ezfalcon[galpy]"
+            )
         # Accept single Potential, list, or CompositePotential (galpy >=1.11)
         pot = _ensure_pot(pot)
         for p in _iter_components(pot):
@@ -303,52 +312,6 @@ class Sim:
                     raise ValueError(f"eps[{name!r}] must be a scalar or 1D array of length {n_comp}, got {type(val)} with shape {val.shape}")
             return eps_flat
 
-
-    # def _resolve_eps(self, eps):
-    #     """
-    #     Convert *eps* to a flat (N,) array.
-
-    #     Accepts:
-    #     - scalar: same softening for all particles
-    #     - dict: ``{component_name: scalar_or_array}`` for every component.
-    #       Each value is either a scalar (broadcast to all particles in that
-    #       component) or an array whose length matches the component's particle
-    #       count.  All components must be present.
-    #     """
-    #     if not isinstance(eps, dict):
-    #         return eps  # scalar or array — pass through unchanged
-
-    #     N = self._mass.shape[0]
-    #     eps_flat = np.empty(N, dtype=np.float64)
-
-    #     missing = set(self._slices.keys()) - set(eps.keys())
-    #     if missing:
-    #         raise ValueError(
-    #             f"eps dict is missing components: {missing}. "
-    #             f"All components must be specified: {list(self._slices.keys())}"
-    #         )
-    #     extra = set(eps.keys()) - set(self._slices.keys())
-    #     if extra:
-    #         raise ValueError(
-    #             f"eps dict contains unknown components: {extra}. "
-    #             f"Known components: {list(self._slices.keys())}"
-    #         )
-
-    #     for name, val in eps.items():
-    #         s = self._slices[name]
-    #         n_comp = s.stop - s.start
-    #         val = np.asarray(val, dtype=np.float64)
-    #         if val.ndim == 0:
-    #             eps_flat[s] = val
-    #         elif val.ndim == 1 and val.shape[0] == n_comp:
-    #             eps_flat[s] = val
-    #         else:
-    #             raise ValueError(
-    #                 f"eps['{name}'] must be a scalar or array of length "
-    #                 f"{n_comp}, got shape {val.shape}"
-    #             )
-    #     return eps_flat
-
     def run(self, t_end, dt, dt_out, method='falcON', 
             cache_self_gravity=True, cache_self_potential=True, **kwargs):
         """
@@ -415,6 +378,7 @@ class Sim:
         self._has_run = True
 
     # --- Position Accessors -----------------------------------------------------------------
+    from ..util.units import units
 
     def pos(self, t=...):
         '''

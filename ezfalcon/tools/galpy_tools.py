@@ -1,13 +1,18 @@
 import numpy as np
 from ..util._galpy_bridge import _check_physical
-import astropy.units as u
+from ..util.units import KMS_TO_KPCMYR
 from galpy import df, potential
+from galpy.util.conversion import mass_in_msol
+lunit = "kpc"
+# galpy default unit scales (used for natural-unit conversions)
+_GALPY_RO = 8.0    # kpc
+_GALPY_VO = 220.0  # km/s
 
 # --- Interface tools ----------------------------------------------------------------
 
 def galpy_orbit_to_ezfalcon(orb):
-    '''Convert a galpy orbit object to ezfalcon compatible pos and vel arrays.
-    
+    r'''Convert a galpy orbit object to ezfalcon compatible pos and vel arrays.
+     
      Parameters
      ----------
      orb : galpy.orbit.Orbit
@@ -24,13 +29,13 @@ def galpy_orbit_to_ezfalcon(orb):
          Units: kpc/Myr
      '''
     _check_physical(orb)
-    pos = np.array([orb.x(return_physical=True), 
-                    orb.y(return_physical=True), 
-                    orb.z(return_physical=True)]) # kpc
-    vel = (np.array([orb.vx(return_physical=True), 
-                    orb.vy(return_physical=True), 
-                    orb.vz(return_physical=True)])*u.km/u.s).to(u.kpc/u.Myr).value
-    return pos.T, vel.T
+    pos = np.atleast_2d(np.array([orb.x(return_physical=True), 
+                                  orb.y(return_physical=True), 
+                                  orb.z(return_physical=True)]).T) # kpc
+    vel = np.atleast_2d(np.array([orb.vx(return_physical=True), 
+                                  orb.vy(return_physical=True), 
+                                  orb.vz(return_physical=True)]).T) * KMS_TO_KPCMYR
+    return pos, vel
 
 # --- Sampling tools ----------------------------------------------------------------
 
@@ -48,7 +53,7 @@ def _check_df(df):
         raise ValueError(f"Unsupported galpy df type: {type(df)}. Supported types: {SUPPORTED_GALPY_DFS}")
 
 def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0], 
-                   center_vel=[0, 0, 0], sampler_kwargs={}):
+                   center_vel=[0, 0, 0]):
     '''
     Sample from a galpy spherical distribution 
     function and return ezfalcon compatible 
@@ -79,7 +84,7 @@ def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0],
     '''
     _check_physical(df)
     _check_df(df)
-    o = df.sample(n=n, rmin=rmin, return_orbit=True, **sampler_kwargs)
+    o = df.sample(n=n, rmin=rmin, return_orbit=True)
     pos, vel = galpy_orbit_to_ezfalcon(o)
     pos += np.asarray(center_pos)[:,None].T
     vel += np.asarray(center_vel)[:,None].T
@@ -87,7 +92,7 @@ def galpydfsampler(df, n, m_total, rmin=0.0, center_pos=[0, 0, 0],
 
 def galpysampler(pot, n, m_total, rmin=0.0, 
                  center_pos=[0, 0, 0], center_vel=[0, 0, 0],
-                 sampler_kwargs={}):
+                 df_kwargs={}):
     '''
     Sample from a galpy potential and return ezfalcon compatible 
     positions and velocities. Only supports spherical potentials.
@@ -97,6 +102,8 @@ def galpysampler(pot, n, m_total, rmin=0.0,
     pot : galpy.potential
         A galpy potential object. You 
         must turn physical on before passing it in, e.g. with `pot.turn_physical_on()`.
+    df_kwargs : dict, optional
+        Additional keyword arguments to pass to the galpy DF constructor.
 
     Returns
     -------
@@ -111,15 +118,15 @@ def galpysampler(pot, n, m_total, rmin=0.0,
     '''
     _check_physical(pot)
     if isinstance(pot, potential.PlummerPotential):
-        _df = df.isotropicPlummerdf(pot=pot)
+        _df = df.isotropicPlummerdf(pot=pot, **df_kwargs)
     elif isinstance(pot, potential.HernquistPotential):
-        _df = df.isotropicHernquistdf(pot=pot)
+        _df = df.isotropicHernquistdf(pot=pot, **df_kwargs)
     elif isinstance(pot, potential.NFWPotential):
-        _df = df.isotropicNFWdf(pot=pot)
+        _df = df.isotropicNFWdf(pot=pot, **df_kwargs)
     else:
-        _df = df.eddingtondf(pot=pot)
+        _df = df.eddingtondf(pot=pot, **df_kwargs)
     return galpydfsampler(_df, n=n, m_total=m_total, rmin=rmin, center_pos=center_pos, 
-                            center_vel=center_vel, sampler_kwargs=sampler_kwargs)
+                            center_vel=center_vel)
 
 
 def mkPlummer_galpy(m, b, n, center_pos=[0, 0, 0], center_vel=[0, 0, 0]):
@@ -146,7 +153,11 @@ def mkPlummer_galpy(m, b, n, center_pos=[0, 0, 0], center_vel=[0, 0, 0]):
         Velocity of the center of the Plummer sphere.
         Units: kpc/Myr
     '''
-    pot = potential.PlummerPotential(amp=m*u.Msun, b=b*u.kpc)
+    pot = potential.PlummerPotential(
+        amp = m / mass_in_msol(_GALPY_VO, _GALPY_RO),
+        b = b / _GALPY_RO,
+        ro = _GALPY_RO, vo=_GALPY_VO,
+    )
     return galpysampler(pot, n, m, center_pos=center_pos, center_vel=center_vel)
 
 
@@ -195,13 +206,16 @@ def mkKing_galpy(m:float, n, W0:float, rt=None, npts=None, rmin=0.0,
         df_kwargs['rt'] = rt
     if npts is not None:
         df_kwargs['npt'] = npts
-    sat_df = df.kingdf(W0=W0, M=m*u.Msun, **df_kwargs)
+    sat_df = df.kingdf(
+        W0=W0, M=m / mass_in_msol(_GALPY_VO, _GALPY_RO),
+        ro=_GALPY_RO, vo=_GALPY_VO, **df_kwargs,
+    )
     return galpydfsampler(sat_df, n, m, rmin=rmin, 
                           center_pos=center_pos, center_vel=center_vel)
 
 
 def mkNFW_galpy(m, n, rmin=0.0, center_pos=[0, 0, 0], center_vel=[0, 0, 0],
-                **nfw_kwargs):
+                nfw_df_kwargs={}, nfw_kwargs={}):
     '''
     Generate the positions, velocities, and masses of
     a NFW sphere using galpy.
@@ -221,12 +235,13 @@ def mkNFW_galpy(m, n, rmin=0.0, center_pos=[0, 0, 0], center_vel=[0, 0, 0],
     center_vel : array-like, optional
         Velocity of the center of the NFW sphere.
         Units: kpc/Myr
-    nfw_kwargs : keyword arguments to pass to the galpy isotropicNFWdf sampler.
+    nfw_df_kwargs : keyword arguments to pass to the galpy isotropicNFWdf sampler.
          See galpy.df.isotropicNFWdf for details. Relevant kwargs include:
             - widrow (bool, optional):
                 If True, use the approximate form from Widrow (2000), otherwise use improved fit that has <~1e-5 relative density errors
             - rmax (float or Quantity, optional):
                 Maximum radius to consider; set to numpy.inf to evaluate NFW w/o cut-off
+    nfw_kwargs : keyword arguments to pass to the galpy NFWPotential constructor. See galpy.potential.NFWPotential for details. Relevant kwargs include:
     
     Returns
     -------
@@ -238,8 +253,9 @@ def mkNFW_galpy(m, n, rmin=0.0, center_pos=[0, 0, 0], center_vel=[0, 0, 0],
         Units: kpc/Myr
     masses : (N,) array
         Masses of sampled particles.
+        Units: Msun
     '''
     pot = potential.NFWPotential(**nfw_kwargs)
     return galpysampler(pot, n, m, rmin=rmin, 
                         center_pos=center_pos, center_vel=center_vel,
-                        sampler_kwargs={'widrow': nfw_kwargs.get('widrow', False), 'rmax': nfw_kwargs.get('rmax', np.inf)})
+                        df_kwargs=nfw_df_kwargs)
