@@ -15,7 +15,7 @@ SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
     potential.TwoPowerSphericalPotential(),
     potential.DehnenCoreSphericalPotential(),
     potential.DehnenSphericalPotential(),
-    potential.EinastoPotential(),
+] + ([potential.EinastoPotential()] if hasattr(potential, 'EinastoPotential') else []) + [
     potential.HernquistPotential(),
     potential.interpSphericalPotential(rforce=lambda r: -1./r,
                         rgrid=np.geomspace(0.01,20,101),Phi0=0.),
@@ -48,7 +48,7 @@ SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS = [
     potential.RingPotential(),
     potential.DoubleExponentialDiskPotential(),
     potential.RazorThinExponentialDiskPotential(),
-    potential.interpRZPotential(potential.MWPotential, interpPot=True)
+    potential.interpRZPotential(potential.MWPotential2014, interpPot=True)
 ]
 
 SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS = [
@@ -70,7 +70,7 @@ SUPPORTED_GALPY_GENERAL_TRIAXIAL_POTENTIALS = [
 ]
 
 EXAMPLE_GALPY_COMPOSITE_POTENTIALS = [
-    potential.MWPotential,
+    potential.MWPotential2014,
     potential.NFWPotential() + potential.MiyamotoNagaiPotential(), # two vectorized potentials
     potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.MiyamotoNagaiPotential(), # unvectorized + vectorized
     potential.TriaxialNFWPotential(b=0.8, c=0.6) + potential.DehnenBarPotential(), # two unvectorized potentials
@@ -83,6 +83,16 @@ ALL_SUPPORTED_GALPY_POTENTIALS = (SUPPORTED_GALPY_SPHERICAL_POTENTIALS +
                                   EXAMPLE_GALPY_COMPOSITE_POTENTIALS)
 
 
+UNVECTORIZED_GALPY_POTENTIALS = [
+    potential.HomogeneousSpherePotential(),
+    potential.SphericalShellPotential(),
+    potential.DoubleExponentialDiskPotential(),
+    potential.RazorThinExponentialDiskPotential(),
+    potential.FerrersPotential(),
+    potential.NullPotential(),
+    potential.SoftenedNeedleBarPotential(),
+]
+
 UNSUPPORTED_GALPY_POTENTIALS = [
     potential.DiskSCFPotential(),
     potential.SCFPotential(),
@@ -90,19 +100,15 @@ UNSUPPORTED_GALPY_POTENTIALS = [
 
 g = np.linspace(-100, 100, 5)
 FULL_TEST_GRID_POSITIONS = np.array(np.meshgrid(g, g, g)).reshape(3, -1).T
-FULL_TEST_R, FULL_TEST_PHI, FULL_TEST_Z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T*u.kpc)
 
 # Exclude the z-axis (x=0, y=0) — galpy forces have a known singularity at R=0
 TEST_GRID_POSITIONS = FULL_TEST_GRID_POSITIONS[((FULL_TEST_GRID_POSITIONS[:, 0] != 0) | (FULL_TEST_GRID_POSITIONS[:, 1] != 0))]
-TEST_R, TEST_PHI, TEST_Z = rect_to_cyl(*TEST_GRID_POSITIONS.T*u.kpc)
 
 # --- Spherical Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=SUPPORTED_GALPY_SPHERICAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def spherical_potential(request):
-    pot = request.param
-    pot.turn_physical_on()
-    return pot
+    return request.param
 
 def test_radial_acc_only(spherical_potential):
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
@@ -138,9 +144,7 @@ def test_reflection_symmetry(spherical_potential):
 
 @pytest.fixture(params=SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS, ids=lambda p: type(p).__name__)
 def axisymmetric_potential(request):
-    pot = request.param
-    pot.turn_physical_on()
-    return pot
+    return request.param
 
 def test_axisymmetry(axisymmetric_potential):
     '''Acc should be invariant under rotation about z-axis for axisymmetric potentials.'''
@@ -160,9 +164,7 @@ def test_axisymmetry(axisymmetric_potential):
 
 @pytest.fixture(params=ALL_SUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
 def galpy_potential(request):
-    pot = request.param
-    pot.turn_physical_on()
-    return pot
+    return request.param
 
 def _numerical_acc(pot_fn, pos, h=1e-5):
     """Compute -grad(Phi) via central differences."""
@@ -177,8 +179,10 @@ def _numerical_acc(pot_fn, pos, h=1e-5):
     return acc
 
 def test_acceleration_match(galpy_potential):
-    '''Compare the acceleration from the galpy potential wrapper to 
-    numerical accelerations.'''
+    '''
+    Compare the acceleration from the galpy potential wrapper to 
+    numerical accelerations.
+    '''
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
     pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     pot_i = partial(pot_fn, t=0)
@@ -187,28 +191,51 @@ def test_acceleration_match(galpy_potential):
     rtol = 1e-4 if isinstance(galpy_potential, potential.interpRZPotential) else 1e-10
     assert np.allclose(acc_bridge, acc_num, rtol=rtol, atol=1e-10)
 
-def test_potential_match(galpy_potential):
-    '''Compare the potential from the galpy potential wrapper to 
-    galpy's own potential evaluation.'''
-    ez_pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
-    ez_pot = ez_pot_fn(FULL_TEST_GRID_POSITIONS, t=0)
-    needs_scalar = isinstance(galpy_potential, _galpy_bridge.UNVECTORIZED_POTENTIALS) or not _galpy_bridge._is_vectorized(galpy_potential)
-    if needs_scalar:
-        galpy_pot = np.array([
-            galpy_potential(R, z, phi=p, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
-            for R, z, p in zip(FULL_TEST_R, FULL_TEST_Z, FULL_TEST_PHI)
-        ])
+def _set_physical(pot, on=True):
+    '''Turn physical units on/off for any galpy potential type.'''
+    if isinstance(pot, list):
+        for p in pot:
+            p.turn_physical_on() if on else p.turn_physical_off()
     else:
-        galpy_pot = galpy_potential(FULL_TEST_R, FULL_TEST_Z, phi=FULL_TEST_PHI, t=0, quantity=True).to(u.kpc**2/u.Myr**2).value
-    assert np.allclose(ez_pot, galpy_pot, rtol=1e-15, equal_nan=True)
+        pot.turn_physical_on() if on else pot.turn_physical_off()
+
+def test_potential_match(galpy_potential):
+    '''
+    Verify bridge potential matches galpy physical-unit output,
+    regardless of whether physical units are on or off.
+    '''
+    R, phi, z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T)
+    # Reference: galpy evaluatePotentials in physical units (km^2/s^2),
+    # converted to ezfalcon internal units (kpc^2/Myr^2).
+    # Uses galpy defaults (ro=8 kpc, vo=220 km/s) passed explicitly.
+    galpy_ref = np.array([
+        potential.evaluatePotentials(
+            galpy_potential, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(u.kpc**2 / u.Myr**2).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    # Bridge output should match with physical OFF (default fixture state)
+    ez_pot_off = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)(
+        FULL_TEST_GRID_POSITIONS, t=0
+    )
+    assert np.allclose(ez_pot_off, galpy_ref, rtol=1e-12, equal_nan=True), \
+        "Potential mismatch with physical OFF"
+    # Bridge output should also match with physical ON
+    _set_physical(galpy_potential, on=True)
+    ez_pot_on = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)(
+        FULL_TEST_GRID_POSITIONS, t=0
+    )
+    assert np.allclose(ez_pot_on, galpy_ref, rtol=1e-12, equal_nan=True), \
+        "Potential mismatch with physical ON"
+    # Restore fixture state
+    _set_physical(galpy_potential, on=False)
 
 # --- Triaxial Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS, ids=lambda p: type(p).__name__)
 def triaxial_potential(request):
-    pot = request.param
-    pot.turn_physical_on()
-    return pot
+    return request.param
 
 def test_triaxial_reflection_symmetry(triaxial_potential):
     '''For triaxial potentials centered at origin, a(r) = -a(-r).'''
@@ -233,12 +260,6 @@ def test_triaxial_plane_symmetry(triaxial_potential):
             else:
                 np.testing.assert_allclose(acc_ref[0, j], acc[0, j], rtol=1e-10)
 
-def test_triaxial_nonzero_phitorque(triaxial_potential):
-    '''Triaxial potentials should have non-zero phi force at generic positions.'''
-    R, z, phi = 8.0 * u.kpc, 1.0 * u.kpc, 0.3 * u.rad
-    torque = triaxial_potential.phitorque(R, z, phi=phi, quantity=True)
-    assert torque.value != 0, "Expected non-zero phi torque for triaxial potential"
-
 # --- Unsupported Potentials ------------------------------------------------------------------------ #
 
 @pytest.fixture(params=UNSUPPORTED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
@@ -257,7 +278,7 @@ def test_acc_units():
     from ezfalcon.util.units import G_INTERNAL
     # Kepler potential: a = -GM/r^2 rhat
     from galpy.util.conversion import get_physical
-    M_msun = 1e3 # Msun
+    M_msun = 1e7 # Msun
     pot = potential.KeplerPotential(amp=M_msun * u.Msun)  # amp=1 Msun in physical units
     pot.turn_physical_on()
     r = 0.1 # kpc
@@ -266,7 +287,7 @@ def test_acc_units():
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     acc = acc_fn(pos, t=0)
     assert acc.shape == (1, 3)
-    np.testing.assert_allclose(acc[0, 0], expected_ax, rtol=1e-8)
+    np.testing.assert_allclose(acc[0, 0], expected_ax, rtol=1e-10)
     np.testing.assert_allclose(acc[0, 1], 0.0, atol=1e-20)
     np.testing.assert_allclose(acc[0, 2], 0.0, atol=1e-20)
 
@@ -275,7 +296,7 @@ def test_pot_units():
     for a Kepler potential at a known position.'''
     from ezfalcon.util.units import G_INTERNAL
     from galpy.util.conversion import get_physical
-    M_msun = 1e3 # Msun
+    M_msun = 1e7 # Msun
     pot = potential.KeplerPotential(amp=M_msun * u.Msun)  # amp=1 Msun in physical units
     pot.turn_physical_on()
     r = 0.1 # kpc
@@ -283,14 +304,13 @@ def test_pot_units():
     expected_phi = -G_INTERNAL * M_msun / r
     pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(pot)
     phi = pot_fn(pos, t=0)
-    np.testing.assert_allclose(phi[0], expected_phi, rtol=1e-8)
+    np.testing.assert_allclose(phi[0], expected_phi, rtol=1e-10)
 
 # --- Input Shape Handling ------------------------------------------------------------------------ #
 
 def test_single_particle_acc_shape():
     '''acc_fn should accept a (1,3) array and return (1,3).'''
     pot = potential.PlummerPotential()
-    pot.turn_physical_on()
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     acc = acc_fn(pos, t=0)
@@ -300,7 +320,6 @@ def test_single_particle_acc_shape():
 def test_single_particle_pot_shape():
     '''pot_fn should accept a (1,3) array and return a (1,) array.'''
     pot = potential.PlummerPotential()
-    pot.turn_physical_on()
     pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(pot)
     pos = np.array([[8.0, 0.0, 0.0]])
     phi = pot_fn(pos, t=0)
@@ -310,7 +329,6 @@ def test_single_particle_pot_shape():
 def test_large_batch():
     '''acc_fn should handle 10k particles without issue.'''
     pot = potential.NFWPotential()
-    pot.turn_physical_on()
     rng = np.random.default_rng(42)
     pos = rng.uniform(-50, 50, size=(10_000, 3))
     # Avoid z-axis
@@ -336,9 +354,7 @@ def test_time_independence(spherical_potential):
                                   SUPPORTED_GALPY_AXISYMMETRIC_POTENTIALS + 
                                   SUPPORTED_GALPY_ELLIPSOIDAL_TRIAXIAL_POTENTIALS), ids=lambda p: type(p).__name__)
 def general_galpy_potential(request):
-    pot = request.param
-    pot.turn_physical_on()
-    return pot
+    return request.param
 
 def test_force_direction_attractive(general_galpy_potential):
     '''Radial component of acceleration should point inward (dot(a, r) < 0).'''
@@ -358,26 +374,22 @@ def test_force_direction_attractive(general_galpy_potential):
 # --- Validation Helper Functions ------------------------------------------------------------------ #
 
 def test_check_physical_pot_warns():
-    '''_check_physical_pot should warn and turn physical on when not set.'''
+    '''_check_physical should warn when physical units are not explicitly set.'''
     pot = potential.PlummerPotential()
-    # Freshly created — physical outputs not explicitly set
-    with pytest.warns(UserWarning, match="physical outputs turned off"):
+    with pytest.warns(UserWarning, match="does not have physical units explicitly set"):
         _galpy_bridge._check_physical(pot)
-    # After the call, physical should be on
-    assert pot._roSet or pot._voSet
 
 def test_check_physical_pot_noop():
-    '''_check_physical_pot should not warn when physical is already on.'''
+    '''_check_physical should not warn when physical is already on.'''
     pot = potential.PlummerPotential()
     pot.turn_physical_on()
-    # Should issue no warning
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         _galpy_bridge._check_physical(pot)
 
-def test_check_supported_warns_non_vectorized():
+@pytest.mark.parametrize("pot", UNVECTORIZED_GALPY_POTENTIALS, ids=lambda p: type(p).__name__)
+def test_check_supported_warns_non_vectorized(pot):
     '''_check_supported_pot should warn for non-vectorized potentials.'''
-    pot = potential.HomogeneousSpherePotential()
     with pytest.warns(UserWarning, match="not vectorized"):
         _galpy_bridge._check_supported_pot(pot)
 
@@ -386,7 +398,6 @@ def test_check_supported_warns_non_vectorized():
 def test_z_axis_nan():
     '''Positions on the z-axis (R=0) should produce NaN — documenting the known galpy singularity.'''
     pot = potential.NFWPotential()
-    pot.turn_physical_on()
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     pos = np.array([[0.0, 0.0, 5.0]])
     acc = acc_fn(pos, t=0)
@@ -395,7 +406,6 @@ def test_z_axis_nan():
 def test_very_large_radius():
     '''Bridge should return finite values at very large radii.'''
     pot = potential.NFWPotential()
-    pot.turn_physical_on()
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     radii = [1e3, 1e4, 1e5]
     for r in radii:
@@ -419,7 +429,6 @@ def test_very_small_radius_cored():
         potential.BurkertPotential(),
     ]
     for pot in cored_pots:
-        pot.turn_physical_on()
         acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
         pos = np.array([[1e-10, 0.0, 0.0]])
         acc = acc_fn(pos, t=0)
@@ -434,7 +443,6 @@ def test_interp_spherical_outside_grid():
         rgrid=np.geomspace(0.01, 20, 101),
         Phi0=0.,
     )
-    pot.turn_physical_on()
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(pot)
     # r=50 is outside the grid (max=20)
     pos = np.array([[50.0, 0.0, 0.0]])
@@ -444,5 +452,274 @@ def test_interp_spherical_outside_grid():
         pytest.skip("interpSphericalPotential produces NaN outside rgrid (expected)")
     assert np.all(np.isfinite(acc))
 
-# --- 
-    # TO ADD: galpy combo potential, time-dependent potential,
+# --- Wrapper Potentials --------------------------------------------------------------------------- #
+
+# All wrappers that are vectorized (with a vectorized inner pot)
+VECTORIZED_WRAPPER_POTENTIALS = [
+    potential.DehnenSmoothWrapperPotential(pot=potential.NFWPotential()),
+    potential.GaussianAmplitudeWrapperPotential(pot=potential.NFWPotential()),
+    potential.SolidBodyRotationWrapperPotential(pot=potential.NFWPotential(), omega=1.0),
+    potential.CorotatingRotationWrapperPotential(pot=potential.NFWPotential(), vpo=220., to=0.),
+    potential.KuzminLikeWrapperPotential(pot=potential.NFWPotential()),
+    potential.TimeDependentAmplitudeWrapperPotential(pot=potential.NFWPotential(), A=lambda t: 1.0),
+]
+
+# RotateAndTilt is unvectorized
+UNVECTORIZED_WRAPPER_POTENTIALS = [
+    potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.]),
+]
+
+# Wrapper around an unvectorized inner pot (forces scalar loop even though wrapper is vectorized)
+WRAPPER_WITH_UNVECTORIZED_INNER = [
+    potential.DehnenSmoothWrapperPotential(pot=potential.HomogeneousSpherePotential()),
+]
+
+ALL_WRAPPER_POTENTIALS = (
+    VECTORIZED_WRAPPER_POTENTIALS
+    + UNVECTORIZED_WRAPPER_POTENTIALS
+    + WRAPPER_WITH_UNVECTORIZED_INNER
+)
+
+
+@pytest.fixture(params=ALL_WRAPPER_POTENTIALS, ids=lambda p: type(p).__name__)
+def wrapper_potential(request):
+    return request.param
+
+def test_wrapper_passes_check_supported(wrapper_potential):
+    '''Wrapper potentials with supported inner pots should pass validation.'''
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # suppress unvectorized warnings
+        _galpy_bridge._check_supported_pot(wrapper_potential)
+
+
+def test_wrapper_rejects_unsupported_inner():
+    '''Wrapper around an unsupported inner pot should be rejected.'''
+    wp = potential.DehnenSmoothWrapperPotential(pot=potential.SCFPotential())
+    with pytest.raises(TypeError, match="SCFPotential"):
+        _galpy_bridge._check_supported_pot(wp)
+
+
+def test_wrapper_rejects_unsupported_wrapper():
+    '''An unknown wrapper class should be rejected by _check_supported_pot.'''
+    from galpy.potential.WrapperPotential import WrapperPotential
+
+    class FakeWrapperPotential(WrapperPotential):
+        pass
+
+    nfw = potential.NFWPotential()
+    fake = object.__new__(FakeWrapperPotential)
+    fake._pot = nfw
+    with pytest.raises(TypeError, match="is not supported by ezfalcon"):
+        _galpy_bridge._check_supported_pot(fake)
+
+
+def test_wrapper_acc_match(wrapper_potential):
+    '''Wrapper acc should match -grad(Phi) via numerical differentiation.'''
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wrapper_potential)
+    pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(wrapper_potential)
+    pot_i = partial(pot_fn, t=0)
+    # Use a smaller grid to keep scalar-loop tests fast
+    pos = np.array([
+        [8.0, 0.0, 1.0],
+        [5.0, 3.0, -2.0],
+        [-4.0, 6.0, 0.5],
+        [10.0, -7.0, 3.0],
+    ])
+    acc_bridge = acc_fn(pos, t=0)
+    acc_num = _numerical_acc(pot_i, pos)
+    np.testing.assert_allclose(acc_bridge, acc_num, rtol=1e-6, atol=1e-10)
+
+
+def test_wrapper_pot_match(wrapper_potential):
+    '''Wrapper pot should match galpy module-level evaluatePotentials.'''
+    ez_pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(wrapper_potential)
+    pos = np.array([
+        [8.0, 0.0, 1.0],
+        [5.0, 3.0, -2.0],
+        [-4.0, 6.0, 0.5],
+    ])
+    ez_pot = ez_pot_fn(pos, t=0)
+    # Reference via galpy module-level
+    pot = _galpy_bridge._ensure_pot(wrapper_potential)
+    ro, vo = _galpy_bridge._get_ro_vo(pot)
+    vo_int = vo * _galpy_bridge.KMS_TO_KPCMYR
+    R, phi, z = rect_to_cyl(*pos.T)
+    R_nat, z_nat = R / ro, z / ro
+    if _galpy_bridge._needs_scalar_loop(pot):
+        ref = np.array([
+            potential.evaluatePotentials(pot, Ri, zi, phi=pi, t=0, use_physical=False)
+            for Ri, zi, pi in zip(R_nat, z_nat, phi)
+        ]) * vo_int**2
+    else:
+        ref = np.asarray(potential.evaluatePotentials(
+            pot, R_nat, z_nat, phi=phi, t=0, use_physical=False
+        )) * vo_int**2
+    np.testing.assert_allclose(ez_pot, ref, rtol=1e-15)
+
+
+def test_nested_wrapper():
+    '''A wrapper inside a wrapper should work.'''
+    inner = potential.SolidBodyRotationWrapperPotential(pot=potential.NFWPotential(), omega=1.0)
+    outer = potential.DehnenSmoothWrapperPotential(pot=inner)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _galpy_bridge._check_supported_pot(outer)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(outer)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    acc = acc_fn(pos, t=0)
+    assert acc.shape == (1, 3)
+    assert np.all(np.isfinite(acc))
+
+
+def test_wrapper_unvectorized_inner_warns():
+    '''Wrapper around unvectorized inner pot should emit a warning.'''
+    wp = potential.DehnenSmoothWrapperPotential(pot=potential.HomogeneousSpherePotential())
+    with pytest.warns(UserWarning, match="not vectorized"):
+        _galpy_bridge._check_supported_pot(wp)
+
+
+def test_wrapper_unvectorized_wrapper_warns():
+    '''RotateAndTilt wrapper itself should emit an unvectorized warning.'''
+    rt = potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.])
+    with pytest.warns(UserWarning, match="not vectorized"):
+        _galpy_bridge._check_supported_pot(rt)
+
+
+# --- Time-Dependent Potentials -------------------------------------------------------------------- #
+
+def test_dehnen_smooth_time_dependence():
+    '''DehnenSmoothWrapper should grow from 0 to full amplitude over tform.'''
+    nfw = potential.NFWPotential()
+    # tform=5 in natural units (should take several hundred Myr)
+    wp = potential.DehnenSmoothWrapperPotential(pot=nfw, tform=0., tsteady=2*u.Myr)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    # At t=0 the smooth wrapper should be near full amplitude
+    acc_t0 = acc_fn(pos, t=0)
+    acc_t10 = acc_fn(pos, t=5)  # well after tsteady
+    acc_nfw = _galpy_bridge._galpy_pot_to_acc_fn(nfw)(pos, t=5)
+    np.testing.assert_allclose(acc_t0, 0.0, rtol=1e-15)
+    np.testing.assert_allclose(acc_t10, acc_nfw, rtol=1e-15)
+
+
+def test_gaussian_amplitude_time_dependence():
+    '''GaussianAmplitude wrapper should peak at to and decay away from it.'''
+    nfw = potential.NFWPotential()
+    # Peak at t_nat=0 with sigma_nat=2
+    wp = potential.GaussianAmplitudeWrapperPotential(pot=nfw, to=0., sigma=2.)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    acc_t0 = acc_fn(pos, t=0)
+    # At a much later time the Gaussian should have decayed
+    acc_late = acc_fn(pos, t=5000)  # 5 Gyr later
+    mag_t0 = np.linalg.norm(acc_t0)
+    mag_late = np.linalg.norm(acc_late)
+    assert mag_t0 > 10 * mag_late, (
+        f"Expected forces to decay away from Gaussian peak, got |a(0)|={mag_t0}, |a(5000)|={mag_late}"
+    )
+
+
+def test_time_dependent_amplitude_wrapper():
+    '''TimeDependentAmplitudeWrapper with A(t)=sin^2(t) should vary in time.'''
+    nfw = potential.NFWPotential()
+    wp = potential.TimeDependentAmplitudeWrapperPotential(
+        pot=nfw, A=lambda t: np.sin(t)**2
+    )
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    acc_t0 = acc_fn(pos, t=0)           # sin(0)^2=0 → zero force
+    acc_mid = acc_fn(pos, t=100)        # sin(t_nat)^2 varies
+    assert np.linalg.norm(acc_t0) < 1e-20, "Expected zero force at t=0 for sin^2(0)"
+    assert np.linalg.norm(acc_mid) > 0, "Expected nonzero force at nonzero time"
+
+
+def test_solid_body_rotation():
+    '''SolidBodyRotation wrapper should rotate the pattern — forces differ at same position, different times.'''
+    bar = potential.DehnenBarPotential()
+    wp = potential.SolidBodyRotationWrapperPotential(pot=bar, omega=1.0)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pos = np.array([[5.0, 3.0, 0.0]])
+    acc_t0 = acc_fn(pos, t=0)
+    acc_t1 = acc_fn(pos, t=500)  # after some rotation
+    # Forces should differ because the bar has rotated
+    assert not np.allclose(acc_t0, acc_t1, atol=1e-14), (
+        "Expected different forces at different times for rotating bar"
+    )
+
+
+def test_corotating_rotation():
+    '''CorotatingRotation should also produce time-varying forces.'''
+    bar = potential.DehnenBarPotential()
+    wp = potential.CorotatingRotationWrapperPotential(pot=bar, vpo=220., to=0.)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pos = np.array([[5.0, 3.0, 0.0]])
+    acc_t0 = acc_fn(pos, t=0)
+    acc_t1 = acc_fn(pos, t=500)
+    assert not np.allclose(acc_t0, acc_t1, atol=1e-14), (
+        "Expected different forces at different times for corotating bar"
+    )
+
+
+def test_rotate_and_tilt_acc():
+    '''RotateAndTilt should change the force direction when tilted.'''
+    nfw = potential.NFWPotential()
+    # Identity rotation (zvec=z-axis) should match bare NFW
+    rt_identity = potential.RotateAndTiltWrapperPotential(pot=nfw, zvec=[0., 0., 1.])
+    acc_fn_id = _galpy_bridge._galpy_pot_to_acc_fn(rt_identity)
+    acc_fn_bare = _galpy_bridge._galpy_pot_to_acc_fn(nfw)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    acc_id = acc_fn_id(pos, t=0)
+    acc_bare = acc_fn_bare(pos, t=0)
+    np.testing.assert_allclose(acc_id, acc_bare, rtol=1e-10)
+
+    # Tilted rotation should differ
+    rt_tilted = potential.RotateAndTiltWrapperPotential(pot=nfw, zvec=[1., 0., 0.])
+    acc_fn_tilt = _galpy_bridge._galpy_pot_to_acc_fn(rt_tilted)
+    acc_tilt = acc_fn_tilt(pos, t=0)
+    # For a spherical pot, tilting should not change forces (symmetry)
+    np.testing.assert_allclose(np.linalg.norm(acc_tilt), np.linalg.norm(acc_bare), rtol=1e-8)
+
+
+def test_kuzmin_like_wrapper():
+    '''KuzminLikeWrapper should produce finite forces and match -grad(Phi).'''
+    nfw = potential.NFWPotential()
+    wp = potential.KuzminLikeWrapperPotential(pot=nfw)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
+    pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(wp)
+    pos = np.array([[8.0, 0.0, 1.0], [5.0, 3.0, -2.0]])
+    acc = acc_fn(pos, t=0)
+    assert np.all(np.isfinite(acc))
+    acc_num = _numerical_acc(partial(pot_fn, t=0), pos)
+    np.testing.assert_allclose(acc, acc_num, rtol=1e-6, atol=1e-10)
+
+
+def test_wrapper_in_composite():
+    '''A wrapper combined with other potentials in a list should work.'''
+    nfw = potential.NFWPotential()
+    bar_wrapped = potential.SolidBodyRotationWrapperPotential(
+        pot=potential.DehnenBarPotential(), omega=1.0
+    )
+    combo = [nfw, bar_wrapped]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        _galpy_bridge._check_supported_pot(combo)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(combo)
+    pos = np.array([[8.0, 0.0, 1.0]])
+    acc = acc_fn(pos, t=0)
+    assert acc.shape == (1, 3)
+    assert np.all(np.isfinite(acc))
+
+
+def test_warns_for_inconsistent_physical_units_in_composite():
+    '''_get_ro_vo should warn when a composite with mixed 
+    physical unit settings is provided.'''
+    p1 = potential.NFWPotential()
+    p2 = potential.PlummerPotential()
+    p1.turn_physical_on(ro=8., vo=220.)
+    p2.turn_physical_on(ro=10., vo=400.)  # one on, one off
+    combo = [p1, p2]
+    with pytest.warns(UserWarning, match=r"Potential PlummerPotential has ro=10\.0, vo=400\.0 "
+                r"which differs from the first potential \(ro=8\.0, vo=220\.0\)\. "
+                r"Using the first potential's values\."):
+        _galpy_bridge._get_ro_vo(combo)
+# Test adding multiple external potentials

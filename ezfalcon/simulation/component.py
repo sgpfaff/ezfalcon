@@ -202,6 +202,7 @@ class Component:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        
         Returns
         -------
         vel : (len(t), n_particles, 3) array or (n_particles, 3) array
@@ -223,6 +224,7 @@ class Component:
             If float, will return snapshot closest to that time.
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
+        
         Returns
         -------
         vx : (len(t), n_particles) array or (n_particles,) array
@@ -474,7 +476,7 @@ class Component:
 
     def L(self, t=..., center_pos=None, center_vel=None):
         '''
-        Angular momentum of particles at *t*
+        Angular momentum of particles at *t*.
 
         Units: `Msun kpc^2 / Myr`
 

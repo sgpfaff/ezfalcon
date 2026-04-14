@@ -6,7 +6,7 @@ import numpy as np
 from .component import Component
 from ..dynamics import _integrate, self_gravity
 import galpy
-from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot
+from ..util._galpy_bridge import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn, _check_physical, _check_supported_pot, _ensure_pot, _iter_components
 import functools
 import warnings
 
@@ -194,13 +194,15 @@ class Sim:
             In this case
         
         '''
-        if isinstance(pot, galpy.potential.Potential):
-            _check_supported_pot(pot)
-            _check_physical(pot)
-            self._ext_pot_fns.append(_galpy_pot_to_pot_fn(pot))
-            self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
-        else:
-            raise TypeError("External potential must be a galpy Potential object.")
+        # Accept single Potential, list, or CompositePotential (galpy >=1.11)
+        pot = _ensure_pot(pot)
+        for p in _iter_components(pot):
+            if not isinstance(p, galpy.potential.Potential):
+                raise TypeError("External potential must be a galpy Potential object.")
+            _check_physical(p)
+        _check_supported_pot(pot)
+        self._ext_pot_fns.append(_galpy_pot_to_pot_fn(pot))
+        self._ext_acc_fns.append(_galpy_pot_to_acc_fn(pot))
     
     def add_external_acc(self, acc_fn):
         '''
@@ -1566,6 +1568,7 @@ class Sim:
         return self.external_acc(t=t)[:, 2]
     
     # --- Diagnostics -----------------------------------------------------------------
+
     @_resolve_use_cached
     def plot_energy_diagnostic(self, method=None, use_cached=True, nsnap=None, 
                         filename=None, **kwargs):
@@ -1646,6 +1649,7 @@ class Sim:
         
     
     # --- Properties ---------------------------------------------------------------------
+    
     @property
     def mass(self):
         return self._mass
