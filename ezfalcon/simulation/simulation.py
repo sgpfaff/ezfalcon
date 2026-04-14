@@ -378,7 +378,6 @@ class Sim:
         self._has_run = True
 
     # --- Position Accessors -----------------------------------------------------------------
-    from ..util.units import units
 
     def pos(self, t=...):
         '''
