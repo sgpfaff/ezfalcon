@@ -62,6 +62,10 @@ jobs:
           pip install ".[test]"
           pip install "galpy==${{ matrix.galpy-version }}.*"
 
+      - name: Pin scipy for older galpy
+        if: matrix.galpy-version == '1.9'
+        run: pip install "scipy<1.14"
+
       - name: Run galpy-specific tests
         working-directory: /tmp
         run: |
