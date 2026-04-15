@@ -39,7 +39,7 @@ def test_component_attribute_access_pre_run():
     comp1 = multicomp.comp1
     assert isinstance(comp1, Component)
     assert np.all(comp1.pos(t=0) == multicomp._init_pos[multicomp._slices['comp1']])
-    assert np.all(comp1.vel(t=0) == multicomp._init_vel[multicomp._slices['comp1']])
+    assert np.all(comp1.vel(t=0, return_internal=True) == multicomp._init_vel[multicomp._slices['comp1']])
     assert np.all(comp1.mass == multicomp._mass[multicomp._slices['comp1']])
 
 def test_component_returns_view_not_copy():
@@ -439,17 +439,17 @@ def test_comp_cartesian_roundtrip():
 def test_comp_spherical_velocity_decomposition():
     """|v|^2 = vr^2 + vtheta^2 + (R*vphi)^2 via component accessors."""
     c = multicomp.comp1
-    v_sq = np.sum(c.vel(t=0)**2, axis=-1)
+    v_sq = np.sum(c.vel(t=0, return_internal=True)**2, axis=-1)
     R = c.cylR(t=0)
-    recon = c.vr(t=0)**2 + c.vtheta(t=0)**2 + (R * c.vphi(t=0))**2
+    recon = c.vr(t=0, return_internal=True)**2 + c.vtheta(t=0, return_internal=True)**2 + (R * c.vphi(t=0, return_internal=True))**2
     np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
 
 def test_comp_cylindrical_velocity_decomposition():
     """|v|^2 = cylvR^2 + (R*vphi)^2 + vz^2 via component accessors."""
     c = multicomp.comp1
-    v_sq = np.sum(c.vel(t=0)**2, axis=-1)
+    v_sq = np.sum(c.vel(t=0, return_internal=True)**2, axis=-1)
     R = c.cylR(t=0)
-    recon = c.cylvR(t=0)**2 + (R * c.vphi(t=0))**2 + c.vz(t=0)**2
+    recon = c.cylvR(t=0, return_internal=True)**2 + (R * c.vphi(t=0, return_internal=True))**2 + c.vz(t=0, return_internal=True)**2
     np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
 
 # --- Component momentum analytical tests ----------------------------------------------- #
@@ -474,26 +474,26 @@ def test_comp_pz_analytic():
 def test_comp_L_analytic():
     '''comp.L(t=0) == mass[:,None] * cross(pos, vel)'''
     c = multicomp.comp1
-    expected = c.mass[:, None] * np.cross(c.pos(t=0), c.vel(t=0))
-    np.testing.assert_allclose(c.L(t=0), expected, rtol=1e-15)
+    expected = c.mass[:, None] * np.cross(c.pos(t=0, return_internal=True), c.vel(t=0, return_internal=True))
+    np.testing.assert_allclose(c.L(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_comp_Lx_explicit():
     '''Lx = m * (y*vz - z*vy)'''
     c = multicomp.comp1
-    expected = c.mass * (c.y(t=0) * c.vz(t=0) - c.z(t=0) * c.vy(t=0))
-    np.testing.assert_allclose(c.Lx(t=0), expected, rtol=1e-15)
+    expected = c.mass * (c.y(t=0, return_internal=True) * c.vz(t=0, return_internal=True) - c.z(t=0, return_internal=True) * c.vy(t=0, return_internal=True))
+    np.testing.assert_allclose(c.Lx(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_comp_Ly_explicit():
     '''Ly = m * (z*vx - x*vz)'''
     c = multicomp.comp1
-    expected = c.mass * (c.z(t=0) * c.vx(t=0) - c.x(t=0) * c.vz(t=0))
-    np.testing.assert_allclose(c.Ly(t=0), expected, rtol=1e-15)
+    expected = c.mass * (c.z(t=0, return_internal=True) * c.vx(t=0, return_internal=True) - c.x(t=0, return_internal=True) * c.vz(t=0, return_internal=True))
+    np.testing.assert_allclose(c.Ly(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_comp_Lz_explicit():
     '''Lz = m * (x*vy - y*vx)'''
     c = multicomp.comp1
-    expected = c.mass * (c.x(t=0) * c.vy(t=0) - c.y(t=0) * c.vx(t=0))
-    np.testing.assert_allclose(c.Lz(t=0), expected, rtol=1e-15)
+    expected = c.mass * (c.x(t=0, return_internal=True) * c.vy(t=0, return_internal=True) - c.y(t=0, return_internal=True) * c.vx(t=0, return_internal=True))
+    np.testing.assert_allclose(c.Lz(t=0, return_internal=True), expected, rtol=1e-15)
 
 
 # --- Component momentum consistency ------------------------------------------------------ #
@@ -522,23 +522,23 @@ def test_comp_Lz_consistent_with_L():
 def test_comp_L_center_pos():
     c = multicomp.comp1
     center = np.array([0.5, 0.5, 0.0])
-    L = c.L(t=0, center_pos=center)
-    expected = c.mass[:, None] * np.cross(c.pos(t=0) - center, c.vel(t=0))
+    L = c.L(t=0, center_pos=center, return_internal=True)
+    expected = c.mass[:, None] * np.cross(c.pos(t=0, return_internal=True) - center, c.vel(t=0, return_internal=True))
     np.testing.assert_allclose(L, expected, rtol=1e-15)
 
 def test_comp_L_center_vel():
     c = multicomp.comp1
     cv = np.array([0.05, 0.05, 0.0])
-    L = c.L(t=0, center_vel=cv)
-    expected = c.mass[:, None] * np.cross(c.pos(t=0), c.vel(t=0) - cv)
+    L = c.L(t=0, center_vel=cv, return_internal=True)
+    expected = c.mass[:, None] * np.cross(c.pos(t=0, return_internal=True), c.vel(t=0, return_internal=True) - cv)
     np.testing.assert_allclose(L, expected, rtol=1e-15)
 
 def test_comp_L_center_pos_and_vel():
     c = multicomp.comp1
     cp = np.array([0.5, 0.5, 0.0])
     cv = np.array([0.05, 0.05, 0.0])
-    L = c.L(t=0, center_pos=cp, center_vel=cv)
-    expected = c.mass[:, None] * np.cross(c.pos(t=0) - cp, c.vel(t=0) - cv)
+    L = c.L(t=0, center_pos=cp, center_vel=cv, return_internal=True)
+    expected = c.mass[:, None] * np.cross(c.pos(t=0, return_internal=True) - cp, c.vel(t=0, return_internal=True) - cv)
     np.testing.assert_allclose(L, expected, rtol=1e-15)
 
 # --- Component momentum / angular momentum partitioning ---------------------------------------- #
@@ -573,17 +573,17 @@ def test_comp_cylvR_explicit():
 def test_comp_vphi_explicit():
     """vphi = (x*vy - y*vx) / R^2 via component accessors."""
     c = multicomp.comp1
-    expected = (c.x(0)*c.vy(0) - c.y(0)*c.vx(0)) / c.cylR(0)**2
-    np.testing.assert_allclose(c.vphi(0), expected, rtol=1e-15)
+    expected = (c.x(0)*c.vy(0, return_internal=True) - c.y(0)*c.vx(0, return_internal=True)) / c.cylR(0)**2
+    np.testing.assert_allclose(c.vphi(0, return_internal=True), expected, rtol=1e-15)
 
 def test_comp_vtheta_explicit():
     """vtheta = [z(x*vx + y*vy) - R^2*vz] / (r*R) via component accessors."""
     c = multicomp.comp1
     R = c.cylR(0)
     r = c.r(0)
-    in_plane = c.x(0)*c.vx(0) + c.y(0)*c.vy(0)
-    expected = (c.z(0) * in_plane - R**2 * c.vz(0)) / (r * R)
-    np.testing.assert_allclose(c.vtheta(0), expected, rtol=1e-14)
+    in_plane = c.x(0, return_internal=True)*c.vx(0, return_internal=True) + c.y(0, return_internal=True)*c.vy(0, return_internal=True)
+    expected = (c.z(0, return_internal=True) * in_plane - R**2 * c.vz(0, return_internal=True)) / (r * R)
+    np.testing.assert_allclose(c.vtheta(0, return_internal=True), expected, rtol=1e-13)
 
 # --- Ellipsis accessor matches sim sliced (all snapshots) ---------------------------------------- #
 
@@ -649,7 +649,7 @@ def test_iac_self_gravity_all_components():
     acc_all, _ = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
     acc_disk_expected = acc_all[:2]
 
-    acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True)
+    acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
     np.testing.assert_allclose(acc_disk, acc_disk_expected, rtol=1e-15)
 
 
@@ -663,7 +663,7 @@ def test_iac_self_gravity_own_component_only():
     disk = _IAC_SIM.disk
     acc_disk_only, _ = _direct_summation(_IAC_COMP1_POS, _IAC_COMP1_MASS, eps=0.0, return_potential=True)
 
-    acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=False)
+    acc_disk = disk.self_gravity(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(acc_disk, acc_disk_only, rtol=1e-15)
 
 
@@ -692,7 +692,7 @@ def test_iac_self_potential_all_components():
     _, pot_all = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
     expected = _IAC_COMP1_MASS * pot_all[:2]
 
-    result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=True)
+    result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
     np.testing.assert_allclose(result, expected, rtol=1e-15)
 
 
@@ -706,7 +706,7 @@ def test_iac_self_potential_own_component_only():
     _, pot_disk_only = _direct_summation(_IAC_COMP1_POS, _IAC_COMP1_MASS, eps=0.0, return_potential=True)
     expected = _IAC_COMP1_MASS * pot_disk_only
 
-    result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False)
+    result = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result, expected, rtol=1e-15)
 
 
@@ -755,7 +755,7 @@ def test_iac_sat_self_gravity_all_analytical():
     acc_all, _ = _direct_summation(all_pos, all_mass, eps=0.0, return_potential=True)
     acc_sat_expected = acc_all[2:]  # sat is particle index 2
 
-    acc_sat = sat.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True)
+    acc_sat = sat.self_gravity(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
     np.testing.assert_allclose(acc_sat, acc_sat_expected, rtol=1e-15)
 
 
@@ -783,12 +783,12 @@ def test_iac_self_potential_analytical_two_body():
     phi_0_all = -G_INTERNAL * m1 / r01 - G_INTERNAL * m_sat / r0_sat
     phi_1_all = -G_INTERNAL * m0 / r01 - G_INTERNAL * m_sat / r1_sat
     expected_all = np.array([m0 * phi_0_all, m1 * phi_1_all])
-    result_all = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=True)
+    result_all = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=True, return_internal=True)
     np.testing.assert_allclose(result_all, expected_all, rtol=1e-15)
 
     # Own component only
     phi_0_own = -G_INTERNAL * m1 / r01
     phi_1_own = -G_INTERNAL * m0 / r01
     expected_own = np.array([m0 * phi_0_own, m1 * phi_1_own])
-    result_own = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False)
+    result_own = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result_own, expected_own, rtol=1e-15)

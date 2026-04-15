@@ -6,6 +6,7 @@ import pytest
 from ezfalcon.simulation import Sim, Component
 import numpy as np
 from ezfalcon.util import G_INTERNAL
+from ezfalcon.util.units import KMS_TO_KPCGYR
 from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
 import astropy.units as u
 
@@ -211,14 +212,14 @@ def test_accessors_are_correct_initially():
     match the input values.
     '''
     np.testing.assert_array_equal(singlecomp.pos(0), COMP1_POS)
-    np.testing.assert_array_equal(singlecomp.vel(0), COMP1_VEL)
+    np.testing.assert_allclose(singlecomp.vel(0), COMP1_VEL, rtol=1e-15)
     np.testing.assert_array_equal(singlecomp.mass, COMP1_MASS)
     np.testing.assert_array_equal(singlecomp.x(0), COMP1_POS[:, 0])
     np.testing.assert_array_equal(singlecomp.y(0), COMP1_POS[:, 1])
     np.testing.assert_array_equal(singlecomp.z(0), COMP1_POS[:, 2])
-    np.testing.assert_array_equal(singlecomp.vx(0), COMP1_VEL[:, 0])
-    np.testing.assert_array_equal(singlecomp.vy(0), COMP1_VEL[:, 1])
-    np.testing.assert_array_equal(singlecomp.vz(0), COMP1_VEL[:, 2])
+    np.testing.assert_allclose(singlecomp.vx(0), COMP1_VEL[:, 0], rtol=1e-15)
+    np.testing.assert_allclose(singlecomp.vy(0), COMP1_VEL[:, 1], rtol=1e-15)
+    np.testing.assert_allclose(singlecomp.vz(0), COMP1_VEL[:, 2], rtol=1e-15)
 
 def test_accessors_match_init_values():
     '''
@@ -226,14 +227,14 @@ def test_accessors_match_init_values():
     match the ._init_ values.
     '''
     np.testing.assert_array_equal(multicomp.pos(0), multicomp._init_pos)
-    np.testing.assert_array_equal(multicomp.vel(0), multicomp._init_vel)
+    np.testing.assert_array_equal(multicomp.vel(0, return_internal=True), multicomp._init_vel)
     np.testing.assert_array_equal(multicomp.mass, multicomp._mass)
     np.testing.assert_array_equal(multicomp.x(0), multicomp._init_pos[:, 0])
     np.testing.assert_array_equal(multicomp.y(0), multicomp._init_pos[:, 1])
     np.testing.assert_array_equal(multicomp.z(0), multicomp._init_pos[:, 2])
-    np.testing.assert_array_equal(multicomp.vx(0), multicomp._init_vel[:, 0])
-    np.testing.assert_array_equal(multicomp.vy(0), multicomp._init_vel[:, 1])
-    np.testing.assert_array_equal(multicomp.vz(0), multicomp._init_vel[:, 2])
+    np.testing.assert_array_equal(multicomp.vx(0, return_internal=True), multicomp._init_vel[:, 0])
+    np.testing.assert_array_equal(multicomp.vy(0, return_internal=True), multicomp._init_vel[:, 1])
+    np.testing.assert_array_equal(multicomp.vz(0, return_internal=True), multicomp._init_vel[:, 2])
 
 
 # --- POST-RUN, NO EXTERNAL POTENTIAL TESTS ------------------------------------------------------------------- #
@@ -276,7 +277,7 @@ def test_ti_float_out_of_bounds():
     '''
     Test that passing a float out of bounds raises an error.
     '''
-    with pytest.raises(ValueError, match="t=100.0 Myr is out of bounds for simulation time range \[0.0, 1.0\] Myr."):
+    with pytest.raises(ValueError, match="t=100.0 Gyr is out of bounds for simulation time range \[0.0, 1.0\] Gyr."):
         multicomp._ti(100.0)
 
 def test_ti_fails_with_list():
@@ -387,7 +388,7 @@ def test_acc_matches_direct():
     mass = np.array(np.random.normal(loc=1e9, scale=1e8, size=(10,)))
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    acc = sim.self_gravity(t=0, method='direct', eps=0.0)
+    acc = sim.self_gravity(t=0, method='direct', eps=0.0, return_internal=True)
     acc_direct= _direct_summation(pos, mass, eps=0.0, return_potential=False)
     np.testing.assert_allclose(acc, acc_direct, rtol=1e-10)
 
@@ -408,19 +409,19 @@ KEPLER_ACC = -G_INTERNAL * 1e9 * np.array([[0.1, 0.2, 0.3]]) / (0.1**2 + 0.2**2 
 KEPLER_POT = -G_INTERNAL * 1e8 * 1e9 / np.sqrt(0.1**2 + 0.2**2 + 0.3**2)
 
 def test_external_acc_with_pot():
-    acc = KEPLER_SIM.external_acc(0)
+    acc = KEPLER_SIM.external_acc(0, return_internal=True)
     assert np.all(np.isclose(acc, KEPLER_ACC, rtol=1e-10))
 
 def test_external_ax_with_pot():
-    ax = KEPLER_SIM.external_ax(0)
+    ax = KEPLER_SIM.external_ax(0, return_internal=True)
     assert np.all(np.isclose(ax, KEPLER_ACC[:, 0], rtol=1e-10))
 
 def test_external_ay_with_pot():
-    ay = KEPLER_SIM.external_ay(0)
+    ay = KEPLER_SIM.external_ay(0, return_internal=True)
     assert np.all(np.isclose(ay, KEPLER_ACC[:, 1], rtol=1e-10))
 
 def test_external_az_with_pot():
-    az = KEPLER_SIM.external_az(0)
+    az = KEPLER_SIM.external_az(0, return_internal=True)
     assert np.all(np.isclose(az, KEPLER_ACC[:, 2], rtol=1e-10))
 
 # --- potential accessors ------------------------------------------------------------------------ #
@@ -434,7 +435,7 @@ def test_external_pot_against_direct():
     compute_external_pot is not multiplying by mass.
     Relies on: galpy KeplerPotential being correct, _galpy_bridge conversion.
     '''
-    pot = KEPLER_SIM.compute_external_pot(0)
+    pot = KEPLER_SIM.compute_external_pot(0, return_internal=True)
     assert np.all(np.isclose(pot, KEPLER_POT, rtol=1e-10))
 
 def test_self_potential_against_direct():
@@ -453,7 +454,7 @@ def test_self_potential_against_direct():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     _, pot_direct = _direct_summation(pos, mass, eps=0.0, return_potential=True)
-    pot_sim = sim.self_potential(t=0, method='direct', eps=0.0)
+    pot_sim = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(pot_sim[0], mass[0] * pot_direct[0], rtol=1e-15)
     np.testing.assert_allclose(pot_sim[1], mass[1] * pot_direct[1], rtol=1e-15)
 
@@ -477,7 +478,7 @@ def test_PE_against_direct():
     ext_pot_direct = ([-G_INTERNAL * mass[0] * 1e9 / np.linalg.norm(pos[0]), 
                        -G_INTERNAL * mass[1] * 1e9 / np.linalg.norm(pos[1])])
     pot_direct = mass * self_pot_direct + ext_pot_direct
-    pot_sim = sim.PE(t=0, method='direct', eps=0.0)
+    pot_sim = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(pot_sim[0], pot_direct[0], rtol=1e-10)
     np.testing.assert_allclose(pot_sim[1], pot_direct[1], rtol=1e-10)
 
@@ -497,9 +498,9 @@ def test_PE_is_sum_of_self_and_external():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    self_pot = sim.self_potential(t=0, method='direct', eps=0.0)
-    ext_pot = sim.compute_external_pot(t=0)
-    total_pot = sim.PE(t=0, method='direct', eps=0.0)
+    self_pot = sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)
+    ext_pot = sim.compute_external_pot(t=0, return_internal=True)
+    total_pot = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(total_pot, self_pot + ext_pot, rtol=1e-15)
 
 # --- total energy accessors ------------------------------------------------------------------------ #
@@ -520,9 +521,9 @@ def test_energy_is_sum_of_KE_and_PE():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    KE = sim.KE(t=0)
-    PE = sim.PE(t=0, method='direct', eps=0.0)
-    energy = sim.energy(t=0, method='direct', eps=0.0)
+    KE = sim.KE(t=0, return_internal=True)
+    PE = sim.PE(t=0, method='direct', eps=0.0, return_internal=True)
+    energy = sim.energy(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(energy, KE + PE, rtol=1e-15)
 
 def test_energy_is_sum_of_KE_and_PE_after_run():
@@ -543,8 +544,8 @@ def test_energy_is_sum_of_KE_and_PE_after_run():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=0.0)
-    np.testing.assert_allclose(sim.energy(t=0.5, method='direct', eps=0.0), 
-                               sim.KE(t=0.5) + sim.PE(t=0.5, method='direct', eps=0.0), rtol=1e-15)
+    np.testing.assert_allclose(sim.energy(t=0.5, method='direct', eps=0.0, return_internal=True), 
+                               sim.KE(t=0.5, return_internal=True) + sim.PE(t=0.5, method='direct', eps=0.0, return_internal=True), rtol=1e-15)
 
 def test_system_energy_is_sum_of_energies():
     '''
@@ -568,9 +569,9 @@ def test_system_energy_is_sum_of_energies():
     sim = Sim()
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
-    KE = np.sum(sim.KE(t=0))
-    PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0))
-    system_energy = sim.system_energy(t=0, method='direct', eps=0.0)
+    KE = np.sum(sim.KE(t=0, return_internal=True))
+    PE = 0.5 * np.sum(sim.self_potential(t=0, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0, return_internal=True))
+    system_energy = sim.system_energy(t=0, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
    
 def test_system_energy_is_sum_of_energies_after_run():
@@ -581,9 +582,9 @@ def test_system_energy_is_sum_of_energies_after_run():
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.add_external_pot(kepler_pot)
     sim.run(t_end=0.5, dt=0.25, dt_out=0.25, method='direct', eps=0.0)
-    KE = np.sum(sim.KE(t=0.5))
-    PE = 0.5 *np.sum(sim.self_potential(t=0.5, method='direct', eps=0.0)) + np.sum(sim.compute_external_pot(t=0.5))
-    system_energy = sim.system_energy(t=0.5, method='direct', eps=0.0)
+    KE = np.sum(sim.KE(t=0.5, return_internal=True))
+    PE = 0.5 *np.sum(sim.self_potential(t=0.5, method='direct', eps=0.0, return_internal=True)) + np.sum(sim.compute_external_pot(t=0.5, return_internal=True))
+    system_energy = sim.system_energy(t=0.5, method='direct', eps=0.0, return_internal=True)
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
 
 
@@ -624,6 +625,14 @@ def test_dt_out_less_than_dt():
                   dt_out=0.05,
                   method='direct',
                   eps=0.0)
+def test_dt_out_not_a_multiple_of_dt():
+    with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
+        KEPLER_SIM.run(
+                  t_end=1.0, 
+                  dt=0.03, 
+                  dt_out=0.07,
+                  method='direct',
+                  eps=0.0)
 def test_invalid_method():
     with pytest.raises(ValueError, match="Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'direct_C', 'falcON'\]"):
         KEPLER_SIM.run(
@@ -656,6 +665,7 @@ def test_invalid_kwargs():
 
 E_POS  = np.array([[0.0, -1.0, 0.0], [0.0, 1.0, 0.0]])   # 2 kpc apart
 E_VEL  = np.array([[0.5,  0.0, 0.0], [0.0, 0.0, 0.3]])
+E_VEL_INTERNAL = E_VEL * KMS_TO_KPCGYR
 E_MASS = np.array([3e8, 5e8])           # non-unit, non-equal, large enough that G*M*M/r >> 1e-8
 E_SEP  = np.linalg.norm(E_POS[1] - E_POS[0])   # 2.0 kpc
 E_EPS  = 0.0
@@ -703,7 +713,7 @@ def test_self_potential_is_mass_weighted():
     Relies on: _direct_summation being correct (test_direct_summation.py).
     '''
     sim = _energy_sim()
-    pe = sim.self_potential(t=0, method='direct',eps=E_EPS)
+    pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
     # Two-body: PE_i = m_i * (-G * m_j / r_ij)
     expected_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     expected_1 = -E_MASS[1] * G_INTERNAL * E_MASS[0] / E_SEP
@@ -722,7 +732,7 @@ def test_self_potential_differs_from_bare_phi():
     this fails, there is a contradiction).
     '''
     sim = _energy_sim()
-    pe = sim.self_potential(t=0, method='direct',eps=E_EPS)
+    pe = sim.self_potential(t=0, method='direct',eps=E_EPS, return_internal=True)
     bare_phi_0 = -G_INTERNAL * E_MASS[1] / E_SEP   # potential, not PE
     assert not np.isclose(pe[0], bare_phi_0, rtol=1e-2, atol=0)
 
@@ -739,7 +749,7 @@ def test_external_pot_is_mass_weighted():
     Relies on: galpy KeplerPotential, _galpy_bridge unit conversion.
     '''
     sim = _energy_sim(with_ext_pot=True)
-    ext = sim.compute_external_pot(t=0)
+    ext = sim.compute_external_pot(t=0, return_internal=True)
     r0 = np.linalg.norm(E_POS[0])
     r1 = np.linalg.norm(E_POS[1])
     expected_0 = -E_MASS[0] * G_INTERNAL * E_KEPLER_MASS / r0
@@ -761,7 +771,7 @@ def test_PE_includes_mass_on_external():
     test_external_pot_is_mass_weighted (individual terms correct).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, method='direct', eps=E_EPS)
+    pe = sim.PE(t=0, method='direct', eps=E_EPS, return_internal=True)
 
     r0 = np.linalg.norm(E_POS[0])
     r1 = np.linalg.norm(E_POS[1])
@@ -785,7 +795,7 @@ def test_PE_external_without_mass_is_wrong():
     fails, there is a contradiction).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    pe = sim.PE(t=0, method='direct', eps=E_EPS)
+    pe = sim.PE(t=0, method='direct', eps=E_EPS, return_internal=True)
 
     self_pe_0 = -E_MASS[0] * G_INTERNAL * E_MASS[1] / E_SEP
     bare_ext_0 = -G_INTERNAL * E_KEPLER_MASS / np.linalg.norm(E_POS[0])
@@ -808,9 +818,9 @@ def test_system_energy_analytical():
     This is the strongest energy test — independent of all other accessors.
     '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, method='direct', eps=E_EPS, use_cached=False)
+    E = sim.system_energy(t=0, method='direct', eps=E_EPS, use_cached=False, return_internal=True)
 
-    ke = np.sum(0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1))
+    ke = np.sum(0.5 * E_MASS * np.sum(E_VEL_INTERNAL ** 2, axis=-1))
 
     self_pe = -G_INTERNAL * E_MASS[0] * E_MASS[1] / E_SEP
 
@@ -834,9 +844,9 @@ def test_system_energy_mass_on_external_matters():
     fails, there is a contradiction).
     '''
     sim = _energy_sim(with_ext_pot=True)
-    E = sim.system_energy(t=0, method='direct', eps=E_EPS)
+    E = sim.system_energy(t=0, method='direct', eps=E_EPS, return_internal=True)
 
-    ke = np.sum(0.5 * E_MASS * np.sum(E_VEL ** 2, axis=-1))
+    ke = np.sum(0.5 * E_MASS * np.sum(E_VEL_INTERNAL ** 2, axis=-1))
     self_pe = -G_INTERNAL * E_MASS[0] * E_MASS[1] / E_SEP
     r0 = np.linalg.norm(E_POS[0])
     r1 = np.linalg.norm(E_POS[1])
@@ -906,7 +916,7 @@ def test_self_gravity_acc_caching_matches_internal_array():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
-    np.testing.assert_allclose(sim.self_gravity(), sim._cached_self_acc, rtol=1e-10)
+    np.testing.assert_allclose(sim.self_gravity(return_internal=True), sim._cached_self_acc, rtol=1e-10)
 
 def test_self_gravity_pot_caching_matches_internal_array():
     '''
@@ -916,7 +926,7 @@ def test_self_gravity_pot_caching_matches_internal_array():
     '''
     sim = _caching_test_sim()
     _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=True)
-    np.testing.assert_allclose(sim.self_potential(), sim._mass * sim._cached_self_pot, rtol=1e-10)
+    np.testing.assert_allclose(sim.self_potential(return_internal=True), sim._mass * sim._cached_self_pot, rtol=1e-10)
 
 def test_self_gravity_acc_cache_matches_direct_computation():
     '''
@@ -1126,8 +1136,8 @@ def test_momentum_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    momentum = sim.p(t=0)
-    expected = mass[:, None] * vel
+    momentum = sim.p(t=0, return_internal=True)
+    expected = mass[:, None] * vel * KMS_TO_KPCGYR
     np.testing.assert_allclose(momentum, expected, rtol=1e-15)
 
 def test_px_analytic():
@@ -1140,8 +1150,8 @@ def test_px_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    px = sim.px(t=0)
-    expected = mass * vel[:, 0]
+    px = sim.px(t=0, return_internal=True)
+    expected = mass * vel[:, 0] * KMS_TO_KPCGYR
     np.testing.assert_allclose(px, expected, rtol=1e-15)
 
 def test_py_analytic():
@@ -1154,8 +1164,8 @@ def test_py_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    py = sim.py(t=0)
-    expected = mass * vel[:, 1]
+    py = sim.py(t=0, return_internal=True)
+    expected = mass * vel[:, 1] * KMS_TO_KPCGYR
     np.testing.assert_allclose(py, expected, rtol=1e-15)
 
 def test_pz_analytic():
@@ -1168,8 +1178,8 @@ def test_pz_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    pz = sim.pz(t=0)
-    expected = mass * vel[:, 2]
+    pz = sim.pz(t=0, return_internal=True)
+    expected = mass * vel[:, 2] * KMS_TO_KPCGYR
     np.testing.assert_allclose(pz, expected, rtol=1e-15)
 
 def test_L_analytic():
@@ -1182,8 +1192,8 @@ def test_L_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    L = sim.L(t=0)
-    momentum = mass[:, None] * vel
+    L = sim.L(t=0, return_internal=True)
+    momentum = mass[:, None] * vel * KMS_TO_KPCGYR
     expected = np.cross(pos, momentum)
     np.testing.assert_allclose(L, expected, rtol=1e-12)
 
@@ -1197,10 +1207,10 @@ def test_Lx_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    Lx = sim.Lx(t=0)
+    Lx = sim.Lx(t=0, return_internal=True)
     # Lx = y*pz - z*py
-    expected = mass * (pos[:, 1] * vel[:, 2] - pos[:, 2] * vel[:, 1])
-    np.testing.assert_allclose(Lx, expected, rtol=1e-15)
+    expected = mass * (pos[:, 1] * vel[:, 2] - pos[:, 2] * vel[:, 1]) * KMS_TO_KPCGYR
+    np.testing.assert_allclose(Lx, expected, rtol=1e-14)
 
 def test_Ly_analytic():
     '''
@@ -1212,10 +1222,10 @@ def test_Ly_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    Ly = sim.Ly(t=0)
+    Ly = sim.Ly(t=0, return_internal=True)
     # Ly = z*px - x*pz
-    expected = mass * (pos[:, 2] * vel[:, 0] - pos[:, 0] * vel[:, 2])
-    np.testing.assert_allclose(Ly, expected, rtol=1e-15)
+    expected = mass * (pos[:, 2] * vel[:, 0] - pos[:, 0] * vel[:, 2]) * KMS_TO_KPCGYR
+    np.testing.assert_allclose(Ly, expected, rtol=1e-14)
 
 def test_Lz_analytic():
     '''
@@ -1227,10 +1237,10 @@ def test_Lz_analytic():
     mass = np.random.normal(loc=1e9, scale=1e8, size=(10,))
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
     sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
-    Lz = sim.Lz(t=0)
+    Lz = sim.Lz(t=0, return_internal=True)
     # Lz = x*py - y*px
-    expected = mass * (pos[:, 0] * vel[:, 1] - pos[:, 1] * vel[:, 0])
-    np.testing.assert_allclose(Lz, expected, rtol=1e-15)
+    expected = mass * (pos[:, 0] * vel[:, 1] - pos[:, 1] * vel[:, 0]) * KMS_TO_KPCGYR
+    np.testing.assert_allclose(Lz, expected, rtol=1e-14)
 
 # -- momentum shapes --- #
 
@@ -1316,9 +1326,9 @@ def test_pz_consistent_with_momentum():
     np.testing.assert_allclose(result, expected, rtol=1e-15)
 
 def test_L_consistent_with_momentum_and_position():
-    result = _SHAPE_SIM.L(t=0)
-    expected = np.cross(_SHAPE_SIM._positions[0], _SHAPE_SIM.p(t=0))
-    np.testing.assert_allclose(result, expected, rtol=1e-15)
+    result = _SHAPE_SIM.L(t=0, return_internal=True)
+    expected = np.cross(_SHAPE_SIM._positions[0], _SHAPE_SIM.p(t=0, return_internal=True))
+    np.testing.assert_allclose(result, expected, rtol=1e-14)
 
 def test_Lx_consistent_with_L():
     result = _SHAPE_SIM.Lx(t=0)
@@ -1344,8 +1354,8 @@ def test_L_w_center_pos():
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    L = sim.L(center_pos=np.array([0.5, 0.5, 0]))
-    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel)
+    L = sim.L(center_pos=np.array([0.5, 0.5, 0]), return_internal=True)
+    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR)
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
 
 def test_L_w_center_vel():
@@ -1357,8 +1367,8 @@ def test_L_w_center_vel():
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    L = sim.L(center_vel=np.array([0.05, 0.05, 0]))
-    expected = mass[:, None] * np.cross(pos, vel - np.array([0.05, 0.05, 0]))
+    L = sim.L(center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
+    expected = mass[:, None] * np.cross(pos, vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
 
 def test_L_w_center_pos_and_vel():
@@ -1370,8 +1380,8 @@ def test_L_w_center_pos_and_vel():
     vel = np.array([[0, 0.1, 0], [0.1, 0.0, 0]])
     mass = np.array([1e8, 1e9])
     sim.add_particles('test', pos=pos, vel=vel, mass=mass)
-    L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]))
-    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel - np.array([0.05, 0.05, 0]))
+    L = sim.L(center_pos=np.array([0.5, 0.5, 0]), center_vel=np.array([0.05, 0.05, 0]), return_internal=True)
+    expected = mass[:, None] * np.cross(pos - np.array([0.5, 0.5, 0]), vel * KMS_TO_KPCGYR - np.array([0.05, 0.05, 0]))
     np.testing.assert_allclose(L[0], expected, rtol=1e-15)
 
 # --- coordinate transformations ----------------------------------------------------------------------- #
@@ -1471,20 +1481,20 @@ def test_phi_range():
 
 def test_spherical_velocity_decomposition():
     """|v|^2 = vr^2 + vtheta^2 + (R*vphi)^2"""
-    v_sq = np.sum(_COORD_SIM.vel(t=0)**2, axis=-1)
+    v_sq = np.sum(_COORD_SIM.vel(t=0, return_internal=True)**2, axis=-1)
     R = _COORD_SIM.cylR(t=0)
-    recon = (_COORD_SIM.vr(t=0)**2
-             + _COORD_SIM.vtheta(t=0)**2
-             + (R * _COORD_SIM.vphi(t=0))**2)
+    recon = (_COORD_SIM.vr(t=0, return_internal=True)**2
+             + _COORD_SIM.vtheta(t=0, return_internal=True)**2
+             + (R * _COORD_SIM.vphi(t=0, return_internal=True))**2)
     np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
 
 def test_cylindrical_velocity_decomposition():
     """|v|^2 = vR^2 + (R*vphi)^2 + vz^2"""
-    v_sq = np.sum(_COORD_SIM.vel(t=0)**2, axis=-1)
+    v_sq = np.sum(_COORD_SIM.vel(t=0, return_internal=True)**2, axis=-1)
     R = _COORD_SIM.cylR(t=0)
-    recon = (_COORD_SIM.cylvR(t=0)**2
-             + (R * _COORD_SIM.vphi(t=0))**2
-             + _COORD_SIM.vz(t=0)**2)
+    recon = (_COORD_SIM.cylvR(t=0, return_internal=True)**2
+             + (R * _COORD_SIM.vphi(t=0, return_internal=True))**2
+             + _COORD_SIM.vz(t=0, return_internal=True)**2)
     np.testing.assert_allclose(recon, v_sq, rtol=1e-13)
 
 
@@ -1493,36 +1503,36 @@ def test_cylindrical_velocity_decomposition():
 def test_vr_explicit_formula():
     """vr = (x*vx + y*vy + z*vz) / r"""
     pos = _COORD_SIM.pos(t=0)
-    vel = _COORD_SIM.vel(t=0)
+    vel = _COORD_SIM.vel(t=0, return_internal=True)
     r = np.linalg.norm(pos, axis=-1)
     expected = (pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1] + pos[:, 2]*vel[:, 2]) / r
-    np.testing.assert_allclose(_COORD_SIM.vr(t=0), expected, rtol=1e-15)
+    np.testing.assert_allclose(_COORD_SIM.vr(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_cylvR_explicit_formula():
     """vR = (x*vx + y*vy) / R"""
     pos = _COORD_SIM.pos(t=0)
-    vel = _COORD_SIM.vel(t=0)
+    vel = _COORD_SIM.vel(t=0, return_internal=True)
     R = np.sqrt(pos[:, 0]**2 + pos[:, 1]**2)
     expected = (pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1]) / R
-    np.testing.assert_allclose(_COORD_SIM.cylvR(t=0), expected, rtol=1e-15)
+    np.testing.assert_allclose(_COORD_SIM.cylvR(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_vphi_explicit_formula():
     """vphi = (x*vy - y*vx) / R^2"""
     pos = _COORD_SIM.pos(t=0)
-    vel = _COORD_SIM.vel(t=0)
+    vel = _COORD_SIM.vel(t=0, return_internal=True)
     R_sq = pos[:, 0]**2 + pos[:, 1]**2
     expected = (pos[:, 0]*vel[:, 1] - pos[:, 1]*vel[:, 0]) / R_sq
-    np.testing.assert_allclose(_COORD_SIM.vphi(t=0), expected, rtol=1e-15)
+    np.testing.assert_allclose(_COORD_SIM.vphi(t=0, return_internal=True), expected, rtol=1e-15)
 
 def test_vtheta_explicit_formula():
     """vtheta = [z(x*vx + y*vy) - R^2*vz] / (r*R)"""
     pos = _COORD_SIM.pos(t=0)
-    vel = _COORD_SIM.vel(t=0)
+    vel = _COORD_SIM.vel(t=0, return_internal=True)
     R = np.sqrt(pos[:, 0]**2 + pos[:, 1]**2)
     r = np.linalg.norm(pos, axis=-1)
     in_plane_dot = pos[:, 0]*vel[:, 0] + pos[:, 1]*vel[:, 1]
     expected = (pos[:, 2] * in_plane_dot - R**2 * vel[:, 2]) / (r * R)
-    np.testing.assert_allclose(_COORD_SIM.vtheta(t=0), expected, rtol=1e-15)
+    np.testing.assert_allclose(_COORD_SIM.vtheta(t=0, return_internal=True), expected, rtol=1e-15)
 
 
 # --- known geometry: particle on x-axis ---------------------------------------------------------- #
@@ -1555,7 +1565,7 @@ def test_x_axis_tangential_motion():
     sim = _axis_sim([3, 0, 0], [0, 5, 0])
     assert sim.vr(t=0)[0] == pytest.approx(0.0, abs=1e-15)
     assert sim.cylvR(t=0)[0] == pytest.approx(0.0, abs=1e-15)
-    assert sim.vphi(t=0)[0] == pytest.approx(5.0 / 3.0)  # vphi = vT/R
+    assert sim.vphi(t=0)[0] == pytest.approx(5.0 / 3.0)  # vphi = vT/R [km/s/kpc]
     assert sim.vtheta(t=0)[0] == pytest.approx(0.0, abs=1e-15)
 
 def test_x_axis_polar_motion():
@@ -1741,3 +1751,163 @@ def test_self_ay_simulation(two_component_sim):
 def test_self_az_simulation(two_component_sim):
     az = two_component_sim.self_az(t=0)
     assert az.shape == (15,)
+
+# --- Time-parameter validation and integration edge cases ----------------------------------- #
+
+import warnings as _warnings
+
+
+def _simple_sim():
+    """One-particle sim for fast validation checks (no self-gravity needed)."""
+    sim = Sim()
+    sim.add_particles('pt', pos=np.array([[1.0, 0, 0]]),
+                      vel=np.array([[0.0, 0, 0]]),
+                      mass=np.array([1.0]))
+    return sim
+
+
+# -- t_end not a multiple of dt -> warning (not error) --
+
+def test_t_end_not_multiple_of_dt_warns():
+    '''
+    t_end=0.15 / dt=0.04 is not an integer ratio (3.75).
+    Sim.run() should issue a warning reporting the actual end time.
+    int(0.15/0.04) = 3, so actual_t_end = 3*0.04 = 0.12.
+    '''
+    sim = _simple_sim()
+    with pytest.warns(UserWarning, match=r"Simulation will end at t=0\.12 Gyr instead"):
+        sim.run(t_end=0.15, dt=0.04, dt_out=0.04, method='direct', eps=0.0)
+    # Verify the simulation actually ends at the reported time (truncated, not rounded up)
+    np.testing.assert_allclose(sim.times[-1], 0.12, atol=1e-14)
+
+
+def test_t_end_not_multiple_of_dt_still_runs():
+    '''
+    Even when t_end is not a multiple of dt the simulation should
+    complete and produce valid output (no raise).
+    '''
+    sim = _simple_sim()
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        sim.run(t_end=0.15, dt=0.04, dt_out=0.04, method='direct', eps=0.0)
+    assert sim._has_run
+    assert len(sim.times) >= 2
+
+
+# -- t_end not a multiple of dt_out -> warning --
+
+def test_t_end_not_multiple_of_dt_out_warns():
+    '''
+    t_end=0.5 / dt_out=0.3 is not an integer ratio.
+    n_steps=round(0.5/0.1)=5, steps_per_output=round(0.3/0.1)=3,
+    nsnaps=5//3+1=2, last output at (2-1)*0.3 = 0.3.
+    '''
+    sim = _simple_sim()
+    with pytest.warns(UserWarning, match=r"Last output will be at t=0\.3 Gyr instead of t=0\.5 Gyr"):
+        sim.run(t_end=0.5, dt=0.1, dt_out=0.3, method='direct', eps=0.0)
+    # Verify the simulation's last output is at the reported time
+    np.testing.assert_allclose(sim.times[-1], 0.3, atol=1e-14)
+
+def test_t_end_not_multiple_of_dt_out_nor_dt_warns():
+    '''
+    t_end=0.5 / dt_out=0.3 is not an integer ratio.
+    n_steps=round(0.5/0.1)=5, steps_per_output=round(0.3/0.1)=3,
+    nsnaps=5//3+1=2, last output at (2-1)*0.3 = 0.3.
+    '''
+    sim = _simple_sim()
+    with pytest.warns(UserWarning, match=r"Last output will be at t=0\.3 Gyr instead of t=0\.5 Gyr"):
+        sim.run(t_end=0.5, dt=0.3, dt_out=0.3, method='direct', eps=0.0)
+    # Verify the simulation's last output is at the reported time
+    np.testing.assert_allclose(sim.times[-1], 0.3, atol=1e-14)
+    
+# -- float-tolerant dt_out/dt check: accept valid inputs --
+
+def test_float_tolerant_dt_out_dt_accepts_exact_multiples():
+    '''
+    dt_out=0.1, dt=0.001 -> ratio = 100 exactly.
+    Should not raise despite floating-point representation.
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=0.1, dt=0.001, dt_out=0.1, method='direct', eps=0.0)
+    assert sim._has_run
+
+
+def test_float_tolerant_dt_out_dt_accepts_tricky_floats():
+    '''
+    dt_out=0.075, dt=0.025 -> 3.0 in exact arithmetic, but
+    0.075 and 0.025 are not exact in binary. The tolerant check
+    should accept this.
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=0.075, dt=0.025, dt_out=0.075, method='direct', eps=0.0)
+    assert sim._has_run
+
+
+def test_float_tolerant_dt_out_dt_rejects_genuine_nonmultiple():
+    '''
+    dt_out=0.07, dt=0.03 -> ratio approx 2.333, genuinely not an integer.
+    Should raise ValueError.
+    '''
+    sim = _simple_sim()
+    with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
+        sim.run(t_end=1.0, dt=0.03, dt_out=0.07, method='direct', eps=0.0)
+
+
+# -- exact multiples produce no warnings --
+
+def test_exact_multiples_no_warnings():
+    '''
+    dt_out and t_end are exact multiples of dt.
+    No UserWarning should be raised.
+    '''
+    sim = _simple_sim()
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")   # turn warnings into errors
+        sim.run(t_end=0.5, dt=0.1, dt_out=0.1, method='direct', eps=0.0)
+    assert sim._has_run
+
+
+# -- no zero-position rows (the arange overshoot bug) --
+
+def test_no_zero_position_rows_exact():
+    '''
+    With non-exact multiples the last snapshot must NOT be all-zeros
+    (regression: np.arange overshoot allocated an extra row).
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=0.5, dt=0.1, dt_out=0.2, method='direct', eps=0.0)
+    last_pos = sim.pos(-1, return_internal=True)
+    assert not np.allclose(last_pos, 0.0), "Last snapshot is all zeros — arange overshoot bug"
+
+
+def test_no_zero_position_rows_tricky():
+    '''
+    Use dt_out/dt that are exact in principle but tricky as floats
+    (0.002 / 0.0001 = 20, but 0.002 % 0.0001 != 0 in binary).
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=0.002, dt=0.0001, dt_out=0.002, method='direct', eps=0.0)
+    last_pos = sim.pos(-1, return_internal=True)
+    assert not np.allclose(last_pos, 0.0), "Last snapshot is all zeros — arange overshoot bug"
+
+
+def test_nsnaps_matches_times_length():
+    '''
+    The number of stored snapshots must equal len(sim.times).
+    No extra unwritten rows should exist.
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct', eps=0.0)
+    assert sim._positions.shape[0] == len(sim.times)
+    assert sim._velocities.shape[0] == len(sim.times)
+
+
+def test_times_array_correct():
+    '''
+    sim.times should be [0, dt_out, 2*dt_out, ...] with the right count,
+    constructed via integer arithmetic not np.arange.
+    '''
+    sim = _simple_sim()
+    sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct', eps=0.0)
+    expected_times = np.array([0.0, 0.5, 1.0])
+    np.testing.assert_allclose(sim.times, expected_times, atol=1e-14)

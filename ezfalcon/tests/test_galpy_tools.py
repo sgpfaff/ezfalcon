@@ -36,9 +36,9 @@ def test_orbit_to_ezfalcon_vel_units():
     o = Orbit([1., 0., 1., 0., 0., 0.], ro=8., vo=220.)
     o.turn_physical_on()
     pos, vel = galpy_orbit_to_ezfalcon(o)
-    expected_vT_kpcmyr = (220 * u.km/u.s).to(u.kpc/u.Myr).value
-    assert np.max(np.abs(vel)) < 1.0  # kpc/Myr are small numbers (~0.2)
-    assert np.max(np.abs(vel)) > 0.01  # but not zero
+    expected_vT_kpcgyr = (220 * u.km/u.s).to(u.kpc/u.Gyr).value
+    assert np.max(np.abs(vel)) < 300.0  # kpc/Gyr are ~km/s (~225)
+    assert np.max(np.abs(vel)) > 1.0  # but not zero
 
 def test_orbit_to_ezfalcon_shapes():
     from galpy.orbit import Orbit

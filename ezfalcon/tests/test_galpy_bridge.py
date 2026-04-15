@@ -1,7 +1,7 @@
 import pytest
 import warnings
 from galpy import potential
-from galpy.util.coords import rect_to_cyl
+from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
 from ezfalcon.util import _galpy_bridge
 from itertools import product
@@ -113,7 +113,9 @@ def spherical_potential(request):
 def test_radial_acc_only(spherical_potential):
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(spherical_potential)
     acc = acc_fn(TEST_GRID_POSITIONS, t=0)
-    assert np.allclose(np.cross(TEST_GRID_POSITIONS, acc), 0, atol=1e-14)
+    cross = np.cross(TEST_GRID_POSITIONS, acc)
+    scale = np.max(np.abs(TEST_GRID_POSITIONS)) * np.max(np.abs(acc))
+    assert np.allclose(cross, 0, atol=1e-14 * scale)
 
 def test_spherical_symmetry(spherical_potential):
     '''|a| should be identical at the same radius but different angles.'''
@@ -181,15 +183,26 @@ def _numerical_acc(pot_fn, pos, h=1e-5):
 def test_acceleration_match(galpy_potential):
     '''
     Compare the acceleration from the galpy potential wrapper to 
-    numerical accelerations.
+    numerical accelerations via central differences (h=1e-5).
+    
+    Relative tolerance is limited by O(h^2) truncation error,
+    which varies by potential — sharper features give larger errors.
+    atol is scaled to the max acceleration magnitude so the threshold
+    is unit-system independent.
     '''
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
     pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(galpy_potential)
     pot_i = partial(pot_fn, t=0)
     acc_bridge = acc_fn(TEST_GRID_POSITIONS, t=0)
     acc_num = _numerical_acc(pot_i, TEST_GRID_POSITIONS)
-    rtol = 1e-4 if isinstance(galpy_potential, potential.interpRZPotential) else 1e-10
-    assert np.allclose(acc_bridge, acc_num, rtol=rtol, atol=1e-10)
+    scale = np.max(np.abs(acc_bridge))
+    if isinstance(galpy_potential, potential.interpRZPotential):
+        rtol = 1e-4
+    elif isinstance(galpy_potential, (list, potential.CompositePotential)):
+        rtol = 1e-4   # composites with sharp features have large O(h^2) error
+    else:
+        rtol = 1e-6
+    assert np.allclose(acc_bridge, acc_num, rtol=rtol, atol=1e-10 * scale)
 
 def _set_physical(pot, on=True):
     '''Turn physical units on/off for any galpy potential type.'''
@@ -199,6 +212,64 @@ def _set_physical(pot, on=True):
     else:
         pot.turn_physical_on() if on else pot.turn_physical_off()
 
+def test_force_match_galpy(galpy_potential):
+    '''
+    Verify bridge accelerations match galpy physical-unit forces directly,
+    analogous to test_potential_match for potentials.
+
+    Uses galpy's evaluateRforces / evaluatezforces / evaluatephitorques
+    with astropy units (quantity=True).
+    '''
+    R, phi, z = rect_to_cyl(*TEST_GRID_POSITIONS.T)
+    acc_unit = u.kpc / u.Gyr**2
+    torque_unit = u.kpc**2 / u.Gyr**2
+
+    # Reference: galpy analytical forces in physical units → kpc/Gyr^2
+    aR_ref = np.array([
+        potential.evaluateRforces(
+            galpy_potential, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(acc_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    az_ref = np.array([
+        potential.evaluatezforces(
+            galpy_potential, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(acc_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    pt_ref = np.array([
+        potential.evaluatephitorques(
+            galpy_potential, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(torque_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+
+    # Azimuthal force = torque / R  (R in kpc)
+    aphi_ref = pt_ref / R
+
+    # Cylindrical → Cartesian
+    ax_ref, ay_ref, az_cart_ref = cyl_to_rect_vec(aR_ref, aphi_ref, az_ref, phi)
+    galpy_ref_acc = np.column_stack([ax_ref, ay_ref, az_cart_ref])
+
+    # Bridge output (should match with physical OFF)
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
+    acc_bridge = acc_fn(TEST_GRID_POSITIONS, t=0)
+    assert np.allclose(acc_bridge, galpy_ref_acc, rtol=1e-12, equal_nan=True), \
+        "Force mismatch with galpy analytical forces (physical OFF)"
+
+    # Also test with physical ON
+    _set_physical(galpy_potential, on=True)
+    acc_fn_on = _galpy_bridge._galpy_pot_to_acc_fn(galpy_potential)
+    acc_bridge_on = acc_fn_on(TEST_GRID_POSITIONS, t=0)
+    assert np.allclose(acc_bridge_on, galpy_ref_acc, rtol=1e-12, equal_nan=True), \
+        "Force mismatch with galpy analytical forces (physical ON)"
+
+    # Restore fixture state
+    _set_physical(galpy_potential, on=False)
+
 def test_potential_match(galpy_potential):
     '''
     Verify bridge potential matches galpy physical-unit output,
@@ -206,13 +277,13 @@ def test_potential_match(galpy_potential):
     '''
     R, phi, z = rect_to_cyl(*FULL_TEST_GRID_POSITIONS.T)
     # Reference: galpy evaluatePotentials in physical units (km^2/s^2),
-    # converted to ezfalcon internal units (kpc^2/Myr^2).
+    # converted to ezfalcon internal units (kpc^2/Gyr^2).
     # Uses galpy defaults (ro=8 kpc, vo=220 km/s) passed explicitly.
     galpy_ref = np.array([
         potential.evaluatePotentials(
             galpy_potential, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
             ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
-        ).to(u.kpc**2 / u.Myr**2).value
+        ).to(u.kpc**2 / u.Gyr**2).value
         for Ri, zi, pi in zip(R, z, phi)
     ])
     # Bridge output should match with physical OFF (default fixture state)
@@ -530,6 +601,50 @@ def test_wrapper_acc_match(wrapper_potential):
     np.testing.assert_allclose(acc_bridge, acc_num, rtol=1e-6, atol=1e-10)
 
 
+def test_wrapper_force_match_galpy(wrapper_potential):
+    '''Wrapper acc should match galpy analytical forces directly.'''
+    # Use a smaller grid to keep scalar-loop tests fast
+    pos = np.array([
+        [8.0, 0.0, 1.0],
+        [5.0, 3.0, -2.0],
+        [-4.0, 6.0, 0.5],
+        [10.0, -7.0, 3.0],
+    ])
+    R, phi, z = rect_to_cyl(*pos.T)
+    acc_unit = u.kpc / u.Gyr**2
+    torque_unit = u.kpc**2 / u.Gyr**2
+
+    pot = _galpy_bridge._ensure_pot(wrapper_potential)
+    aR_ref = np.array([
+        potential.evaluateRforces(
+            pot, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(acc_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    az_ref = np.array([
+        potential.evaluatezforces(
+            pot, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(acc_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    pt_ref = np.array([
+        potential.evaluatephitorques(
+            pot, Ri * u.kpc, zi * u.kpc, phi=pi, t=0 * u.Gyr,
+            ro=8. * u.kpc, vo=220. * u.km / u.s, quantity=True
+        ).to(torque_unit).value
+        for Ri, zi, pi in zip(R, z, phi)
+    ])
+    aphi_ref = pt_ref / R
+    ax_ref, ay_ref, az_cart_ref = cyl_to_rect_vec(aR_ref, aphi_ref, az_ref, phi)
+    galpy_ref_acc = np.column_stack([ax_ref, ay_ref, az_cart_ref])
+
+    acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wrapper_potential)
+    acc_bridge = acc_fn(pos, t=0)
+    np.testing.assert_allclose(acc_bridge, galpy_ref_acc, rtol=1e-12)
+
+
 def test_wrapper_pot_match(wrapper_potential):
     '''Wrapper pot should match galpy module-level evaluatePotentials.'''
     ez_pot_fn = _galpy_bridge._galpy_pot_to_pot_fn(wrapper_potential)
@@ -542,7 +657,7 @@ def test_wrapper_pot_match(wrapper_potential):
     # Reference via galpy module-level
     pot = _galpy_bridge._ensure_pot(wrapper_potential)
     ro, vo = _galpy_bridge._get_ro_vo(pot)
-    vo_int = vo * _galpy_bridge.KMS_TO_KPCMYR
+    vo_int = vo * _galpy_bridge.KMS_TO_KPCGYR
     R, phi, z = rect_to_cyl(*pos.T)
     R_nat, z_nat = R / ro, z / ro
     if _galpy_bridge._needs_scalar_loop(pot):
@@ -590,7 +705,6 @@ def test_wrapper_unvectorized_wrapper_warns():
 def test_dehnen_smooth_time_dependence():
     '''DehnenSmoothWrapper should grow from 0 to full amplitude over tform.'''
     nfw = potential.NFWPotential()
-    # tform=5 in natural units (should take several hundred Myr)
     wp = potential.DehnenSmoothWrapperPotential(pot=nfw, tform=0., tsteady=2*u.Myr)
     acc_fn = _galpy_bridge._galpy_pot_to_acc_fn(wp)
     pos = np.array([[8.0, 0.0, 1.0]])

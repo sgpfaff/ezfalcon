@@ -29,14 +29,14 @@ from galpy.potential import NFWPotential
 from galpy.orbit import Orbit
 import astropy.units as u
 
-t_end = 10 * u.Myr # INCREASE TO 100 Myr FOR REAL TESTS
-dt = 1/200*u.Myr
-ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Myr
+t_end = 0.01 * u.Gyr # INCREASE TO 0.1 Gyr FOR REAL TESTS
+dt = 5e-6 * u.Gyr
+ts = np.arange(0, t_end.value + dt.value, dt.value) * u.Gyr
 pot = NFWPotential(amp=1e13*u.Msun, a=20*u.kpc)
 R, vR, vT, z, vz, phi = 8., 0.1, 220.0, 0., 0.5, 0.
 pot.turn_physical_on()
 pos = np.array([cyl_to_rect(R, phi, z)])
-vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Myr).value])
+vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Gyr).value])
 acc_fn = _galpy_pot_to_acc_fn(pot)
 pos_out, vel_out, ts_out, _, _ = _integrate(pos, vel, np.array([1.]), False, None, [acc_fn], 
                                       t_end.value, dt.value, dt.value, eps=0.0,
@@ -46,7 +46,7 @@ pot_fn = _galpy_pot_to_pot_fn(pot)
 nsnaps, npart = vel_out.shape[:2]
 KE = 0.5 * np.sum(vel_out**2, axis=-1)  # (nsnaps, N)
 PE = pot_fn(pos_out.reshape(-1, 3), t=0).reshape(nsnaps, npart)  # flatten → eval → reshape
-E_out = ((KE + PE).squeeze()* u.kpc**2/u.Myr**2).to(u.km**2/u.s**2).value
+E_out = ((KE + PE).squeeze()* u.kpc**2/u.Gyr**2).to(u.km**2/u.s**2).value
 Lz_out = (pos_out[...,0]*vel_out[...,1] - pos_out[...,1]*vel_out[...,0]).squeeze()
 
 def test_output_times():
@@ -74,26 +74,26 @@ def test_x_against_galpy():
     np.testing.assert_allclose(pos_out[...,0][...,0], o_galpy.x(ts).T, rtol=1e-8), "x position does not match galpy output."
     
 def test_vx_against_galpy():
-    np.testing.assert_allclose(vel_out[...,0][...,0], (o_galpy.vx(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "Velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,0][...,0], (o_galpy.vx(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "Velocity does not match galpy output."
 
 def test_y_against_galpy():
     np.testing.assert_allclose(pos_out[...,1][...,0], o_galpy.y(ts).T, rtol=1e-6), "y position does not match galpy output."
 
 def test_vy_against_galpy():
-    np.testing.assert_allclose(vel_out[...,1][...,0], (o_galpy.vy(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "y velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,1][...,0], (o_galpy.vy(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "y velocity does not match galpy output."
 
 def test_z_against_galpy():
     np.testing.assert_allclose(pos_out[...,2][...,0], o_galpy.z(ts).T, rtol=1e-6), "z position does not match galpy output."
 
 def test_vz_against_galpy():
-    np.testing.assert_allclose(vel_out[...,2][...,0], (o_galpy.vz(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "z velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,2][...,0], (o_galpy.vz(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "z velocity does not match galpy output."
 
 def test_energy_against_galpy():
     energy_galpy = o_galpy.E(ts, quantity=True).to(u.km**2/u.s**2).value
     np.testing.assert_allclose(E_out, energy_galpy, rtol=1e-6), "Energy does not match galpy output."
 
 def test_Lz_against_galpy():
-    Lz_galpy = o_galpy.Lz(ts, quantity=True).to(u.kpc*u.kpc/u.Myr).value
+    Lz_galpy = o_galpy.Lz(ts, quantity=True).to(u.kpc*u.kpc/u.Gyr).value
     np.testing.assert_allclose(Lz_out, Lz_galpy, rtol=1e-6), "Angular momentum does not match galpy output."
 
 # --- vectorized integration --------------------------------------------------------------------------------#
@@ -102,7 +102,7 @@ from galpy.util.coords import rect_to_cyl, rect_to_cyl_vec
 
 pos = np.array([[8., 0., 0.], [8., 0., 0.]])
 vel = np.array([[0.1, 220.0, 0.5], [0.2, 220.0, 0.5]])
-vel_internal = (vel * u.km/u.s).to(u.kpc/u.Myr).value
+vel_internal = (vel * u.km/u.s).to(u.kpc/u.Gyr).value
 mass = np.array([1., 1.])
 (pos_out, vel_out, ts_out, 
 self_acc_out, self_pot_out)  = _integrate(pos, vel_internal, mass, False, None, [acc_fn], 
@@ -150,7 +150,7 @@ def test_integrate_multiple_orbits_vx_match_galpy():
     '''    
     Test that integrating multiple orbits in an external potential matches galpy vx velocity output.
     '''
-    np.testing.assert_allclose(vel_out[...,0], (o_galpy_many.vx(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "Velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,0], (o_galpy_many.vx(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "Velocity does not match galpy output."
 
 def test_integrate_multiple_orbits_y_match_galpy():
     '''
@@ -162,7 +162,7 @@ def test_integrate_multiple_orbits_vy_match_galpy():
     '''
     Test that integrating multiple orbits in an external potential matches galpy vy velocity output.
     '''
-    np.testing.assert_allclose(vel_out[...,1], (o_galpy_many.vy(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "y velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,1], (o_galpy_many.vy(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "y velocity does not match galpy output."
 
 def test_integrate_multiple_orbits_z_match_galpy():
     '''
@@ -174,7 +174,7 @@ def test_integrate_multiple_orbits_vz_match_galpy():
     '''
     Test that integrating multiple orbits in an external potential matches galpy vz velocity output.
     '''
-    np.testing.assert_allclose(vel_out[...,2], (o_galpy_many.vz(ts).T * u.km/u.s).to(u.kpc/u.Myr).value, rtol=1e-6), "z velocity does not match galpy output."
+    np.testing.assert_allclose(vel_out[...,2], (o_galpy_many.vz(ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "z velocity does not match galpy output."
 
 # --- return option --------------------------------------------------------------------------------
 

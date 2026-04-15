@@ -5,6 +5,7 @@ Simulation class for ezfalcon.
 import numpy as np
 from .component import Component
 from ..dynamics import _integrate, self_gravity
+from ..util.units import unit_handler, KMS_TO_KPCGYR
 import warnings
 
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
@@ -20,18 +21,18 @@ class Sim:
 
         # Particle arrays -- built incrementally by add_particles()
         self._init_pos = None     # (N, 3) kpc
-        self._init_vel = None     # (N, 3) kpc/Myr
+        self._init_vel = None     # (N, 3) kpc/Gyr
         self._mass = None         # (N,) Msun
         self._slices = {}         # component name -> slice
 
         # Snapshot arrays -- populated by run()
         self._positions = None       # (n_snap, N, 3) kpc
-        self._velocities = None      # (n_snap, N, 3) kpc/Myr
-        self._cached_self_acc = None # (n_snap, N, 3) kpc/Myr^2
-        # self._cached_ext_acc = None  # (n_snap, N, 3) kpc/Myr^2
-        self._cached_self_pot = None # (n_snap, N)    kpc^2/Myr^2
+        self._velocities = None      # (n_snap, N, 3) kpc/Gyr
+        self._cached_self_acc = None # (n_snap, N, 3) kpc/Gyr^2
+        # self._cached_ext_acc = None  # (n_snap, N, 3) kpc/Gyr^2
+        self._cached_self_pot = None # (n_snap, N)    kpc^2/Gyr^2
   
-        self._times = None           # (n_snap,) Myr
+        self._times = None           # (n_snap,) Gyr
         self._has_run = False
         self._self_gravity_on = True
         self._ext_acc_fns = []     # list of functions that take (pos, t) and return (N, 3) acc
@@ -61,7 +62,7 @@ class Sim:
                 raise TypeError("t must be an int index, a float time, or ellipsis.")
             else:
                 if t < self._times[0] or t > self._times[-1]:
-                    raise ValueError(f"t={t} Myr is out of bounds for simulation time range [{self._times[0]}, {self._times[-1]}] Myr.")
+                    raise ValueError(f"t={t} Gyr is out of bounds for simulation time range [{self._times[0]}, {self._times[-1]}] Gyr.")
                 else:
                     return int(np.argmin(np.abs(self._times - t)))
 
@@ -99,7 +100,7 @@ class Sim:
     def add_particles(self, name, pos, vel, mass):
         """
         Add a named particle component.
-        Provide (pos, vel, mass) directly [kpc, kpc/Myr, Msun].
+        Provide (pos, vel, mass) directly [kpc, km/s, Msun].
 
         Parameters
         ----------
@@ -110,7 +111,7 @@ class Sim:
             Units: `kpc`
         vel : (N, 3) array
             Initial velocities of particles.
-            Units: `kpc/Myr`
+            Units: `km/s`
         mass : (N,) array
             Masses of particles.
             Units: `Msun`
@@ -129,7 +130,7 @@ class Sim:
             If the simulation has already been run.
         """
         pos = np.asarray(pos, dtype=np.float64)
-        vel = np.asarray(vel, dtype=np.float64)
+        vel = np.asarray(vel, dtype=np.float64) * KMS_TO_KPCGYR
         mass = np.asarray(mass, dtype=np.float64)
         if self._has_run:
             raise RuntimeError("Cannot add components after run()")
@@ -248,7 +249,7 @@ class Sim:
             Units: `kpc`
         vel : (N, 3) array
             Initial velocities of subhalos.
-            Units: `kpc/Myr`
+            Units: `km/s`
         mass : (N,) array
             Masses of subhalos.
             Units: `Msun`
@@ -315,19 +316,19 @@ class Sim:
     def run(self, t_end, dt, dt_out, method='falcON', 
             cache_self_gravity=True, cache_self_potential=True, **kwargs):
         """
-        Run the simulation to *t_end* [Myr].
+        Run the simulation to *t_end* [Gyr].
 
         Parameters
         ----------
         t_end : float
             End time of the simulation.
-            Units: Myr
+            Units: Gyr
         dt : float
             Timestep for integration.
-            Units: Myr
+            Units: Gyr
         dt_out : float
-            Output interval.
-            Units: Myr
+            Output interval. Must be a multiple of dt.
+            Units: Gyr
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.
@@ -356,7 +357,19 @@ class Sim:
             raise ValueError("dt, dt_out, and t_end must be positive.")
         if dt_out < dt:
             raise ValueError("dt_out must be greater than or equal to dt.")
-
+        if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
+            raise ValueError("dt_out must be a multiple of dt.")
+        if abs(t_end / dt - round(t_end / dt)) > 1e-9:
+            actual_t_end = int(t_end / dt) * dt
+            warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt={dt} Gyr. "
+                          f"Simulation will end at t={actual_t_end:.10g} Gyr instead.")
+        if abs(t_end / dt_out - round(t_end / dt_out)) > 1e-9:
+            n_steps_w = int(t_end / dt) if abs(t_end / dt - round(t_end / dt)) > 1e-9 else round(t_end / dt)
+            steps_per_output = round(dt_out / dt)
+            nsnaps = n_steps_w // steps_per_output + 1
+            actual_t_end = (nsnaps-1) * dt_out
+            warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt_out={dt_out} Gyr. "
+                          f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end:.10g} Gyr.")
         if 'eps' in kwargs:
             kwargs['eps'] = self._resolve_eps(kwargs['eps'])
         
@@ -379,6 +392,7 @@ class Sim:
 
     # --- Position Accessors -----------------------------------------------------------------
 
+    @unit_handler('length')
     def pos(self, t=...):
         '''
         Particle positions (x,y,z) at *t*.
@@ -389,7 +403,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -397,10 +411,11 @@ class Sim:
         -------
         pos : (len(t), n_particles, 3) array or (n_particles, 3) array
             Positions at *t*.
-            Units: `kpc`
+            Units: {unit}
         '''
         return self._positions[self._ti(t)]
 
+    @unit_handler('length')
     def x(self, t=...):
         '''
         Particle x-positions of all particles at *t*.
@@ -411,7 +426,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -423,6 +438,7 @@ class Sim:
         '''
         return self._positions[self._ti(t), :, 0]
  
+    @unit_handler('length')
     def y(self, t=...):
         '''
         Particle y-positions of all particles at *t*.
@@ -433,7 +449,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -445,6 +461,7 @@ class Sim:
         '''
         return self._positions[self._ti(t), :, 1]
 
+    @unit_handler('length')
     def z(self, t=...):
         '''
         Particle z-positions of all particles at *t*.
@@ -455,7 +472,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
 
@@ -467,6 +484,7 @@ class Sim:
         '''
         return self._positions[self._ti(t), :, 2]
 
+    @unit_handler('length')
     def r(self, t=...):
         '''
         Particle spherical radii at *t*.
@@ -477,7 +495,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -487,7 +505,7 @@ class Sim:
             Spherical radii at *t*.
             Units: `kpc`
         '''
-        pos = self.pos(t)
+        pos = self.pos(t, return_internal=True)
         return np.linalg.norm(pos, axis=-1)
 
     def phi(self, t=...):
@@ -503,7 +521,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -513,7 +531,7 @@ class Sim:
             Azimuthal angles at *t*.
             Units: radians
         '''
-        pos = self.pos(t)
+        pos = self.pos(t, return_internal=True)
         return np.arctan2(pos[..., 1], pos[..., 0])
     
     def theta(self, t=...):
@@ -528,7 +546,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -538,10 +556,11 @@ class Sim:
             Polar angles at *t*.
             Units: radians
         '''
-        pos = self.pos(t)
+        pos = self.pos(t, return_internal=True)
         r = np.linalg.norm(pos, axis=-1)
         return np.arccos(pos[..., 2] / r)
 
+    @unit_handler('length')
     def cylR(self, t=...):
         '''
         Particle cylindrical radii at *t*.
@@ -552,7 +571,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -562,21 +581,22 @@ class Sim:
             Cylindrical radii at *t*.
             Units: `kpc`
         '''
-        return np.sqrt(self.x(t)**2 + self.y(t)**2)
+        return np.sqrt(self.x(t, return_internal=True)**2 + 
+                       self.y(t, return_internal=True)**2)
     
     # --- Velocity Accessors -----------------------------------------------------------------
-
+    @unit_handler('velocity')
     def vel(self, t=...):
         '''
         Particle velocities (vx,vy,vz) at *t*.
 
-        Units: `kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -584,21 +604,22 @@ class Sim:
         -------
         vel : (len(t), n_particles, 3) array or (n_particles, 3) array
             Velocities at *t*.
-            Units: `kpc / Myr`
+            Units: `km / s`
         '''
         return self._velocities[self._ti(t)]
 
+    @unit_handler('velocity')
     def vx(self, t=...):
         '''
         x-component of particle velocities at *t*.
 
-        Units: :math:`kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -606,21 +627,22 @@ class Sim:
         -------
         vx : (len(t), n_particles) array or (n_particles,) array
             x-component of velocities at *t*.
-            Units: :math:`kpc / Myr`
+            Units: `km / s`
         '''
         return self._velocities[self._ti(t), :, 0]
 
+    @unit_handler('velocity')
     def vy(self, t=...):
         '''
         y-component of particle velocities at *t*.
 
-        Units: :math:`kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -628,21 +650,22 @@ class Sim:
         -------
         vy : (len(t), n_particles) array or (n_particles,) array
             y-component of velocities at *t*.
-            Units: :math:`kpc / Myr`
+            Units: `km / s`
         '''
         return self._velocities[self._ti(t), :, 1]
 
+    @unit_handler('velocity')
     def vz(self, t=...):
         '''
         z-component of particle velocities at *t*.
 
-        Units: `kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -651,24 +674,25 @@ class Sim:
         vz : (len(t), n_particles) array or (n_particles,) array
             z-component of velocities at *t*.
 
-            Units: `kpc / Myr`
+            Units: `km / s`
         '''
         return self._velocities[self._ti(t), :, 2]
 
+    @unit_handler('velocity')
     def vr(self, t=...):
         '''
         Spherical coordinates radial velocities at *t*.
 
         The component of the velocity vector along the position vector, 
-        i.e. :math:`v_r = (x*v_x + y*v_y + z*v_z) / r`.*
+        i.e. :math:`v_r = (x*v_x + y*v_y + z*v_z) / r`.
 
-        Units: `kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -676,38 +700,42 @@ class Sim:
         -------
         vr : (len(t), n_particles) array or (n_particles,) array
             Radial velocities at *t*.
-            Units: `kpc / Myr`
+            Units: `km / s`
         '''
-        pos = self.pos(t)
-        vel = self.vel(t)
-        vr = np.sum(pos * vel, axis=-1) / self.r(t)
+        pos = self.pos(t, return_internal=True)
+        vel = self.vel(t, return_internal=True)
+        vr = np.sum(pos * vel, axis=-1) / self.r(t, return_internal=True)
         return vr
 
+    @unit_handler('angular_velocity')
     def vphi(self, t=...):
         '''
-        Azimuthal velocities at *t* (for both spherical and cylindrical coordinates).
+        Azimuthal angular velocity at *t* (for both spherical and cylindrical coordinates).
 
-        The component of the velocity vector along the azimuthal direction, 
-        i.e. :math:`v_{phi} = (x*v_y - y*v_x) / (x^2 + y^2)`.
+        The angular velocity about the z-axis,
+        i.e. :math:`\\omega_{\\phi} = (x \\cdot v_y - y \\cdot v_x) / R^2`.
 
-        Units: `rad / Myr`
+        Units: `km/s/kpc`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
         Returns
         -------
         vphi : (len(t), n_particles) array or (n_particles,) array
-            Azimuthal velocities at *t*.
-            Units: `rad / Myr`
+            Azimuthal angular velocities at *t*.
+            Units: `km/s/kpc`
         '''
-        return (self.x(t) * self.vy(t) - self.y(t) * self.vx(t)) / self.cylR(t)**2
+        return ((self.x(t, return_internal=True) * self.vy(t, return_internal=True) - 
+                self.y(t, return_internal=True) * self.vx(t, return_internal=True)) / 
+                self.cylR(t, return_internal=True)**2)
     
+    @unit_handler('velocity')
     def vtheta(self, t=...):
         '''
         Polar velocities at *t* (for spherical coordinates).
@@ -715,13 +743,13 @@ class Sim:
         The component of the velocity vector along the polar direction, 
         i.e. :math:`v_{theta} = [z(x*vx + y*vy) - R^2*vz] / (r*R)`.*
 
-        Units: `kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -729,16 +757,17 @@ class Sim:
         -------
         vtheta : (len(t), n_particles) array or (n_particles,) array
             Polar velocities at *t*.
-            Units: `kpc / Myr`
+            Units: `km / s`
         '''
-        r = self.r(t)
+        r = self.r(t, return_internal=True)
         return (
-            ((self.z(t) * 
-              (self.x(t) * self.vx(t) + self.y(t) * self.vy(t)))
-             - self.cylR(t)**2 * self.vz(t)) 
-            / (r * self.cylR(t))
+            ((self.z(t, return_internal=True) * 
+              (self.x(t, return_internal=True) * self.vx(t, return_internal=True) + self.y(t, return_internal=True) * self.vy(t, return_internal=True)))
+             - self.cylR(t, return_internal=True)**2 * self.vz(t, return_internal=True)) 
+            / (r * self.cylR(t, return_internal=True))
         )
     
+    @unit_handler('velocity')
     def cylvR(self, t=...):
         '''
         Cylindrical coordinates radial velocities at *t*.
@@ -746,13 +775,13 @@ class Sim:
         The component of the velocity vector along the cylindrical radius vector, 
         i.e. :math:`v_{cyl,R} = (x*v_x + y*v_y) / R`.*
 
-        Units: `kpc / Myr`
+        Units: `km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
 
@@ -760,23 +789,26 @@ class Sim:
         -------
         cylvR : (len(t), n_particles) array or (n_particles,) array
             Cylindrical radial velocities at *t*.
-            Units: `kpc / Myr`
+            Units: `km / s`
         '''
-        return (self.x(t) * self.vx(t) + self.y(t) * self.vy(t)) / self.cylR(t)
+        return ((self.x(t, return_internal=True) * self.vx(t, return_internal=True) + 
+                self.y(t, return_internal=True) * self.vy(t, return_internal=True)) 
+                / self.cylR(t, return_internal=True))
 
     # --- Momentum Accessors -----------------------------------------------------------------
-
+    
+    @unit_handler('momentum')
     def p(self, t=...):
         '''
         Particle momenta (px, py, pz) at *t*.
         
-        Units: `Msun kpc / Myr`
+        Units: `Msun km / s`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         
@@ -784,15 +816,16 @@ class Sim:
         -------
         momentum : (len(t), n_particles, 3) array or (n_particles, 3) array
             Momenta at *t*.
-            Units: `Msun kpc / Myr`
+            Units: `Msun km / s`
         '''
-        return self._mass[:, None] * self.vel(t)
+        return self._mass[:, None] * self.vel(t, return_internal=True)
     
+    @unit_handler('momentum')
     def px(self, t=...):
         '''
         x-component of particle momenta at *t*.
 
-        Units: `Msun kpc / Myr`
+        Units: `Msun km / s`
 
         Parameters
         ----------
@@ -806,15 +839,16 @@ class Sim:
         -------
         px : (len(t), n_particles) array or (n_particles,) array
             x-component of momenta at *t*.
-            Units: `Msun kpc / Myr`
+            Units: `Msun km / s`
         '''
-        return self._mass * self.vx(t)
+        return self._mass * self.vx(t, return_internal=True)
 
+    @unit_handler('momentum')
     def py(self, t=...):
         '''
         y-component of particle momenta at *t*.
 
-        Units: `Msun kpc / Myr`
+        Units: `Msun km / s`
 
         Parameters
         ----------
@@ -828,15 +862,16 @@ class Sim:
         -------
         py : (len(t), n_particles) array or (n_particles,) array
             y-component of momenta at *t*.
-            Units: `Msun kpc / Myr`
+            Units: `Msun km / s`
         '''
-        return self._mass * self.vy(t)
+        return self._mass * self.vy(t, return_internal=True)
     
+    @unit_handler('momentum')
     def pz(self, t=...):
         '''
         z-component of particle momenta at *t*.
 
-        Units: `Msun kpc / Myr`
+        Units: `Msun km / s`
 
         Parameters
         ----------
@@ -850,15 +885,16 @@ class Sim:
         -------
         pz : (len(t), n_particles) array or (n_particles,) array
             z-component of momenta at *t*.
-            Units: `Msun kpc / Myr`
+            Units: `Msun km / s`
         '''
-        return self._mass * self.vz(t)
+        return self._mass * self.vz(t, return_internal=True)
 
+    @unit_handler('angular_momentum')
     def L(self, t=..., center_pos=None, center_vel=None):
         '''
         Angular momentum of particles at *t*
 
-        Units: `Msun kpc^2 / Myr`
+        Units: `Msun km^2 / s`
 
         Parameters
         ----------
@@ -872,27 +908,28 @@ class Sim:
             Units: `kpc`
         center_vel : array-like, optional
             Velocity of the center point. Default is [0,0,0].
-            Units: `kpc/Myr`
+            Units: `kpc/Gyr`
 
         Returns
         -------
         L : (len(t), n_particles, 3) array or (n_particles, 3) array
             Angular momentum of each particle at *t* about *center*.
-            Units: `Msun kpc^2 / Myr`
+            Units: `Msun km^2 / s`
         '''
-        r = self.pos(t)
-        v = self.vel(t)
+        r = self.pos(t, return_internal=True)
+        v = self.vel(t, return_internal=True)
         if center_pos is not None:
             r = r - np.asarray(center_pos)
         if center_vel is not None:
             v = v - np.asarray(center_vel)
         return self.mass[:, None] * np.cross(r, v)
     
+    @unit_handler('angular_momentum')
     def Lx(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         x-component of particle angular momentum at *t* about *center*.
 
-        Units: `Msun kpc^2 / Myr`
+        Units: `Msun km^2 / s`
 
         Parameters
         ----------
@@ -906,21 +943,23 @@ class Sim:
             Units: `kpc`
         center_vel : array-like, optional
             Velocity of the center point. Default is [0,0,0].
-            Units: `kpc/Myr`
+            Units: `kpc/Gyr`
 
         Returns
         -------
         Lx : (len(t), n_particles) array or (n_particles,) array
             x-component of angular momentum of each particle at *t* about *center*.
-            Units: `Msun kpc^2 / Myr`
+            Units: `Msun km^2 / s`
         '''
-        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 0]
+        return self.L(t, center_pos=center_pos, center_vel=center_vel, 
+                      return_internal=True)[..., 0]
     
+    @unit_handler('angular_momentum')
     def Ly(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         y-component of particle angular momentum at *t* about *center*.
 
-        Units: `Msun kpc^2 / Myr`
+        Units: `Msun km^2 / s`
 
         Parameters
         ----------
@@ -934,21 +973,23 @@ class Sim:
             Units: `kpc`
         center_vel : array-like, optional
             Velocity of the center point. Default is [0,0,0].
-            Units: `kpc/Myr`
+            Units: `kpc/Gyr`
 
         Returns
         -------
         Ly : (len(t), n_particles) array or (n_particles,) array
             y-component of angular momentum of each particle at *t* about *center*.
-            Units: `Msun kpc^2 / Myr`
+            Units: `Msun km^2 / s`
         '''
-        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 1]
+        return self.L(t, center_pos=center_pos, center_vel=center_vel, 
+                      return_internal=True)[..., 1]
     
+    @unit_handler('angular_momentum')
     def Lz(self, t=..., center_pos=[0,0,0], center_vel=[0,0,0]):
         '''
         z-component of particle angular momentum at *t* about *center*.
 
-        Units: `Msun kpc^2 / Myr`
+        Units: `Msun km^2 / s`
 
         Parameters
         ----------
@@ -962,24 +1003,27 @@ class Sim:
             Units: `kpc`
         center_vel : array-like, optional
             Velocity of the center point. Default is [0,0,0].
-            Units: `kpc/Myr`
+            Units: `kpc/Gyr`
 
         Returns
         -------
         Lz : (len(t), n_particles) array or (n_particles,) array
             z-component of angular momentum of each particle at *t* about *center*.
-            Units: `Msun kpc^2 / Myr`
+            Units: `Msun km^2 / s`
         '''
-        return self.L(t, center_pos=center_pos, center_vel=center_vel)[..., 2]
+        return self.L(t, center_pos=center_pos, center_vel=center_vel, 
+                      return_internal=True)[..., 2]
     
     # --- Energy Accessors -----------------------------------------------------------------
 
     # --- Potential Energy --- #
+
+    @unit_handler('energy')
     def compute_external_pot(self, t=...):
         '''
         External potential of particles at *t*.
 
-        Units: `kpc^2 / Myr^2`
+        Units: `Msun km^2 / s^2`
 
         Parameters
         ----------
@@ -993,13 +1037,13 @@ class Sim:
         -------
         ext_pot : (len(t), n_particles) array
             External potential at each snapshot.
-            Units: `Msun kpc^2 / Myr^2`
+            Units: `Msun km^2 / s^2`
         '''
         t = self._ti(t, vectorized=True)
         if isinstance(t, (int, np.integer)):
             ext_pot = np.zeros(self._mass.shape[0])
             for fn in self._ext_pot_fns:
-                ext_pot += fn(self.pos(t=t), t=t)
+                ext_pot += fn(self.pos(t=t, return_internal=True), t=t)
         else:
             warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
             if t is ...:
@@ -1007,16 +1051,17 @@ class Sim:
             ext_pot = np.zeros((len(t), self._mass.shape[0]))
             for fn in self._ext_pot_fns:
                 for i, t_i in enumerate(t):
-                    ext_pot[i] += fn(self.pos(t=t_i), t=t_i)
+                    ext_pot[i] += fn(self.pos(t=t_i, return_internal=True), t=t_i)
         return self._mass * ext_pot
     
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('energy')
     def self_potential(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Self-gravitational potential of particles at *t*.
 
-        Units: `Msun kpc^2 / Myr^2`
+        Units: `Msun km^2 / s^2`
 
         Parameters
         ----------
@@ -1047,23 +1092,25 @@ class Sim:
         self_pot : (len(t), n_particles) array
             Self-gravitational potential of each particle at each snapshot.
 
-            Units: `Msun kpc^2 / Myr^2`
+            Units: `Msun km^2 / s^2`
         '''
         if use_cached and self._cached_self_pot is not None:
             return self._mass * self._cached_self_pot[self._ti(t, vectorized=True)]
         elif use_cached and self._cached_self_pot is None:
             raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
-            _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False)), self._mass, method=method, **kwargs)
+            _, self_pot = self_gravity(self.pos(t=self._ti(t, vectorized=False), return_internal=True),
+                                       self._mass, method=method, **kwargs)
             return self._mass * self_pot
     
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('energy')
     def PE(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         Total potential energy of particles at *t*.
 
-        Units:  `Msun kpc^2 / Myr^2`
+        Units: `Msun km^2 / s^2`
 
         Parameters
         ----------
@@ -1093,17 +1140,19 @@ class Sim:
         -------
         PE : (len(t), n_particles) array
             Total potential energy of each particle at each snapshot.
-            Units: `Msun kpc^2 / Myr^2`
+            Units: `Msun km^2 / s^2`
         '''
-        return self.self_potential(t=t, method=method, use_cached=use_cached, **kwargs) + self.compute_external_pot(t=t)
-    
+        return (self.self_potential(t=t, method=method, use_cached=use_cached, 
+                                   return_internal=True, **kwargs) + 
+                self.compute_external_pot(t=t, return_internal=True)
+        )
     # --- Kinetic Energy --- #
-
+    @unit_handler('energy')
     def KE(self, t=...):
         '''
         Kinetic energy of particles at *t*.
 
-        Units:  `Msun kpc^2 / Myr^2`
+        Units: `Msun km^2 / s^2`
 
         Parameters
         ----------
@@ -1117,18 +1166,20 @@ class Sim:
         -------
         KE : (len(t), n_particles) array
             Kinetic energy of each particle at each snapshot.
-            Units: `Msun kpc^2 / Myr^2`
+            Units: `Msun km^2 / s^2`
         '''
-        return 0.5 * self._mass * np.sum(self.vel(t=t) ** 2, axis=-1)
+        return 0.5 * self._mass * np.sum(self.vel(t=t, return_internal=True) ** 2, axis=-1)
 
     # --- Total Energy --- #
+
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('energy')
     def energy(self, t=..., use_cached=True, method=None, **kwargs):
         """
         Energy of particles at *t*.
         
-        Units:  `Msun kpc^2 / Myr^2`
+        Units:  `Msun km^2 / s^2`
 
         Parameters
         ----------
@@ -1158,17 +1209,19 @@ class Sim:
         -------
         energy : (len(t), n_particles) array
             Total energy of each particle at each snapshot.
-            Units: `Msun kpc^2 / Myr^2`
+            Units: `Msun km^2 / s^2`
         """
-        return self.KE(t=t) + self.PE(t=t, method=method, use_cached=use_cached, **kwargs)
+        return self.KE(t=t, return_internal=True) + self.PE(t=t, method=method, use_cached=use_cached,
+                                                            return_internal=True, **kwargs)
     
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('energy')
     def system_energy(self, t=..., use_cached=True, method=None,  **kwargs):
         r"""
         Total conserved system energy at *t*.
         
-        Units: `Msun kpc^2 / Myr^2`
+        Units: `Msun km^2 / s^2`
 
         .. math::
 
@@ -1204,12 +1257,12 @@ class Sim:
         -------
         energy : float
             Total energy of the system at time t.
-            Units: :math:`Msun kpc^2 / Myr^2`
+            Units: :math:`Msun km^2 / s^2`
         """
-        return (np.sum(self.KE(t=t), axis=-1) + 
+        return (np.sum(self.KE(t=t, return_internal=True), axis=-1) + 
                 0.5 * np.sum(self.self_potential(t=t, method=method, 
-                                                 use_cached=use_cached, **kwargs), axis=-1) + 
-                np.sum(self.compute_external_pot(t=t), axis=-1)
+                                                 use_cached=use_cached, return_internal=True, **kwargs), axis=-1) + 
+                np.sum(self.compute_external_pot(t=t, return_internal=True), axis=-1)
                 )
     
     @_resolve_use_cached
@@ -1242,15 +1295,15 @@ class Sim:
             Percent change in total energy at each snapshot.
         '''
         if use_cached:
-            Es = self.system_energy(t=t, use_cached=use_cached, method=method, **kwargs)
+            Es = self.system_energy(t=t, use_cached=use_cached, method=method, return_internal=True, **kwargs)
             E0 = Es[0]
         else:
             if t is ...:
-                Es = np.array([self.system_energy(t=t_i, use_cached=False, method=method, **kwargs) for t_i in self._times])
+                Es = np.array([self.system_energy(t=t_i, use_cached=False, method=method, return_internal=True, **kwargs) for t_i in self._times])
                 E0 = Es[0]
             else:
-                Es = self.system_energy(t=t, use_cached=False, method=method, **kwargs)
-                E0 = self.system_energy(t=0, use_cached=False, method=method, **kwargs)
+                Es = self.system_energy(t=t, use_cached=False, method=method, return_internal=True, **kwargs)
+                E0 = self.system_energy(t=0, use_cached=False, method=method, return_internal=True, **kwargs)
         return np.abs((Es - E0) / E0)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
@@ -1259,18 +1312,19 @@ class Sim:
 
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('acceleration')
     def self_gravity(self, t=..., use_cached=True, method=None,  **kwargs):
         '''
         The self-gravity acceleration (ax, ay, az) 
         of each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         use_cached : bool, optional
@@ -1289,7 +1343,7 @@ class Sim:
         self_acc : (n_snaps, N, 3) array
             Self-gravity acceleration of each particle at each snapshot.
             [ax, ay, az]
-            Units: `kpc / Myr^2`
+            Units: `km / s^2`
         '''
         if self._self_gravity_on:
             if use_cached and self._cached_self_acc is not None:
@@ -1297,23 +1351,25 @@ class Sim:
             elif use_cached and self._cached_self_acc is None:
                 raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
             else:
-                return self_gravity(self.pos(self._ti(t, vectorized=False)), self.mass, method=method, **kwargs)[0]
+                return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True), 
+                                    self.mass, method=method, **kwargs)[0]
         else:
-            return np.zeros_like(self.pos(t=t))
+            return np.zeros_like(self.pos(t=t, return_internal=True))
         
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('acceleration')
     def self_ax(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         x-component of self-gravity acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         use_cached : bool, optional
@@ -1344,23 +1400,25 @@ class Sim:
         self_ax : (n_snaps, N) array
             x-component of self-gravity acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 0]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached, 
+                                return_internal=True, **kwargs)[..., 0]
     
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('acceleration')
     def self_ay(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         y-component of self-gravity acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         use_cached : bool, optional
@@ -1387,23 +1445,25 @@ class Sim:
         self_ay : (n_snaps, N) array
             y-component of self-gravity acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 1]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached, 
+                                 return_internal=True, **kwargs)[..., 1]
     
     @_resolve_use_cached
     @_resolve_t
+    @unit_handler('acceleration')
     def self_az(self, t=..., use_cached=True, method=None, **kwargs):
         '''
         z-component of self-gravity acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         method : str, optional
@@ -1430,22 +1490,24 @@ class Sim:
         self_az : (n_snaps, N) array
             z-component of self-gravity acceleration of 
             each particle at each snapshot.
-            Units: kpc / Myr^2
+            Units: `km / s^2`
         '''
-        return self.self_gravity(t=t, method=method, use_cached=use_cached, **kwargs)[..., 2]
+        return self.self_gravity(t=t, method=method, use_cached=use_cached,
+                                 return_internal=True, **kwargs)[..., 2]
 
     # --- External Acceleration --- #
 
+    @unit_handler('acceleration')
     def external_acc(self, t=-1):
         '''
         Total external acceleration on each particle at *t*.
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int or None, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         
@@ -1454,24 +1516,25 @@ class Sim:
         ext_acc : (n_snaps, N, 3) array
             External acceleration of 
             each particle at each snapshot.
-            Units: `kpc / Myr^2`
+            Units: `km / s^2`
         '''
         ext_acc = np.zeros_like(self._velocities[self._ti(t)])
         for fn in self._ext_acc_fns:
-            ext_acc += fn(self.pos(t=t), t=t)
+            ext_acc += fn(self.pos(t=t, return_internal=True), t=t)
         return ext_acc
     
+    @unit_handler('acceleration')
     def external_ax(self, t=-1):
         '''
         x-component of external acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         
@@ -1480,15 +1543,16 @@ class Sim:
         external_ax : (n_snaps, N) array
             x-component of external acceleration of 
             each particle at each snapshot.
-            Units: `kpc / Myr^2`
+            Units: `km / s^2`
         '''
-        return self.external_acc(t=t)[:, 0]
+        return self.external_acc(t=t, return_internal=True)[:, 0]
 
+    @unit_handler('acceleration')
     def external_ay(self, t=-1):
         '''
         y-component of external acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
@@ -1503,21 +1567,22 @@ class Sim:
         external_ay : (n_snaps, N) array
             y-component of external acceleration of 
             each particle at each snapshot.
-            Units: `kpc / Myr^2`
+            Units: `km / s^2`
         '''
-        return self.external_acc(t=t)[:, 1]
+        return self.external_acc(t=t, return_internal=True)[:, 1]
     
+    @unit_handler('acceleration')
     def external_az(self, t=-1):
         '''
         z-component of external acceleration on each particle at *t*.
         
-        Units: `kpc / Myr^2`
+        Units: `km / s^2`
 
         Parameters
         ----------
         t : float or int or None, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is -1, which returns the value at the last snapshot.
         
@@ -1526,9 +1591,9 @@ class Sim:
         external_az : (n_snaps, N) array
             z-component of external acceleration of 
             each particle at each snapshot.
-            Units: `kpc / Myr^2`
+            Units: `km / s^2`
         '''        
-        return self.external_acc(t=t)[:, 2]
+        return self.external_acc(t=t, return_internal=True)[:, 2]
     
     # --- Diagnostics -----------------------------------------------------------------
 
@@ -1583,7 +1648,7 @@ class Sim:
         ----------
         t : float or int, optional
             Time of snapshot to access.
-            If float, will return snapshot closest to that time.
+            If float, will return snapshot closest to that time (in Gyr).
             If int, will return snapshot at that index.
             Default is ... (ellipsis), which returns the value at all times.
         filename : str, optional

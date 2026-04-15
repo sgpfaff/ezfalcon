@@ -19,7 +19,7 @@ from galpy import potential
 from galpy import __version__ as galpy_version
 from galpy.potential.WrapperPotential import WrapperPotential as _WrapperPotentialCls
 from packaging.version import parse as parse_version
-from .units import KMS_TO_KPCMYR, GYR_TO_MYR
+from .units import KMS_TO_KPCGYR
 import numpy as np
 import warnings
 
@@ -28,11 +28,11 @@ _has_composite = hasattr(potential, 'CompositePotential')
 # galpy physical units --> ezfalcon internal units conversion factors
 FROM_GALPY_TO_INTERNAL = {
     'pos': 1.0,                 # kpc --> kpc
-    'vel': KMS_TO_KPCMYR,       # km/s --> kpc/Myr 
+    'vel': KMS_TO_KPCGYR,       # km/s --> kpc/Gyr 
     'mass': 1.0,                # Msun --> Msun
-    'time' : GYR_TO_MYR,        # Gyr --> Myr
-    'pot' : KMS_TO_KPCMYR**2,   # (km/s)^2 --> (kpc/Myr)^2
-    'acc' : KMS_TO_KPCMYR,      # km/s/Myr --> kpc/Myr^2
+    'time' : 1.0,               # Gyr --> Gyr
+    'pot' : KMS_TO_KPCGYR**2,   # (km/s)^2 --> (kpc/Gyr)^2
+    'acc' : KMS_TO_KPCGYR,      # km/s/Gyr --> kpc/Gyr^2
 }
 
 def _opt(name):
@@ -249,7 +249,7 @@ def _galpy_pot_to_pot_fn(pot):
     '''
     pot = _ensure_pot(pot)
     ro, vo = _get_ro_vo(pot)
-    vo_int = vo * KMS_TO_KPCMYR  # kpc/Myr
+    vo_int = vo * KMS_TO_KPCGYR  # kpc/Gyr
     scalar = _needs_scalar_loop(pot)
 
     def pot_fn(pos, t):
@@ -286,12 +286,12 @@ def _galpy_pot_to_acc_fn(pot):
     -------
     acc_fn : function
         A function ``acc_fn(pos, t)`` that takes Cartesian positions
-        ``(N, 3)`` in kpc and time in Myr, and returns accelerations
-        ``(N, 3)`` in kpc/Myr².
+        ``(N, 3)`` in kpc and time in Gyr, and returns accelerations
+        ``(N, 3)`` in kpc/Gyr^2.
     '''
     pot = _ensure_pot(pot)
     ro, vo = _get_ro_vo(pot)
-    vo_int = vo * KMS_TO_KPCMYR  # kpc/Myr
+    vo_int = vo * KMS_TO_KPCGYR  # kpc/Gyr
     scalar = _needs_scalar_loop(pot)
 
     def acc_fn(pos, t):
@@ -316,7 +316,7 @@ def _galpy_pot_to_acc_fn(pot):
             zf = np.asarray(potential.evaluatezforces(pot, R_nat, z_nat, **kw))
             pt = np.asarray(potential.evaluatephitorques(pot, R_nat, z_nat, **kw))
 
-        aR = Rf * vo_int**2 / ro          # kpc/Myr^2
+        aR = Rf * vo_int**2 / ro          # kpc/Gyr^2
         az = zf * vo_int**2 / ro
         aphi = pt * vo_int**2 / R          # phitorque (energy) / R = force
 
