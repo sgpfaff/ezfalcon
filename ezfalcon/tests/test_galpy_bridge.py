@@ -6,8 +6,9 @@ import numpy as np
 from ezfalcon.util import _galpy_bridge
 from itertools import product
 from functools import partial
-from scipy.differentiate import derivative
 import astropy.units as u
+
+_has_composite = hasattr(potential, 'CompositePotential')
 
 
 SUPPORTED_GALPY_SPHERICAL_POTENTIALS = [
@@ -198,7 +199,7 @@ def test_acceleration_match(galpy_potential):
     scale = np.max(np.abs(acc_bridge))
     if isinstance(galpy_potential, potential.interpRZPotential):
         rtol = 1e-4
-    elif isinstance(galpy_potential, (list, potential.CompositePotential)):
+    elif isinstance(galpy_potential, list) or (_has_composite and isinstance(galpy_potential, potential.CompositePotential)):
         rtol = 1e-4   # composites with sharp features have large O(h^2) error
     else:
         rtol = 1e-6
@@ -531,14 +532,17 @@ VECTORIZED_WRAPPER_POTENTIALS = [
     potential.GaussianAmplitudeWrapperPotential(pot=potential.NFWPotential()),
     potential.SolidBodyRotationWrapperPotential(pot=potential.NFWPotential(), omega=1.0),
     potential.CorotatingRotationWrapperPotential(pot=potential.NFWPotential(), vpo=220., to=0.),
-    potential.KuzminLikeWrapperPotential(pot=potential.NFWPotential()),
-    potential.TimeDependentAmplitudeWrapperPotential(pot=potential.NFWPotential(), A=lambda t: 1.0),
-]
+] + ([potential.KuzminLikeWrapperPotential(pot=potential.NFWPotential())]
+     if hasattr(potential, 'KuzminLikeWrapperPotential') else []
+) + ([potential.TimeDependentAmplitudeWrapperPotential(pot=potential.NFWPotential(), A=lambda t: 1.0)]
+     if hasattr(potential, 'TimeDependentAmplitudeWrapperPotential') else []
+)
 
 # RotateAndTilt is unvectorized
-UNVECTORIZED_WRAPPER_POTENTIALS = [
-    potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.]),
-]
+UNVECTORIZED_WRAPPER_POTENTIALS = (
+    [potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.])]
+    if hasattr(potential, 'RotateAndTiltWrapperPotential') else []
+)
 
 # Wrapper around an unvectorized inner pot (forces scalar loop even though wrapper is vectorized)
 WRAPPER_WITH_UNVECTORIZED_INNER = [
@@ -693,6 +697,8 @@ def test_wrapper_unvectorized_inner_warns():
         _galpy_bridge._check_supported_pot(wp)
 
 
+@pytest.mark.skipif(not hasattr(potential, 'RotateAndTiltWrapperPotential'),
+                    reason='RotateAndTiltWrapperPotential not available')
 def test_wrapper_unvectorized_wrapper_warns():
     '''RotateAndTilt wrapper itself should emit an unvectorized warning.'''
     rt = potential.RotateAndTiltWrapperPotential(pot=potential.NFWPotential(), zvec=[0., 0., 1.])
@@ -733,6 +739,8 @@ def test_gaussian_amplitude_time_dependence():
     )
 
 
+@pytest.mark.skipif(not hasattr(potential, 'TimeDependentAmplitudeWrapperPotential'),
+                    reason='TimeDependentAmplitudeWrapperPotential not available')
 def test_time_dependent_amplitude_wrapper():
     '''TimeDependentAmplitudeWrapper with A(t)=sin^2(t) should vary in time.'''
     nfw = potential.NFWPotential()
@@ -774,6 +782,8 @@ def test_corotating_rotation():
     )
 
 
+@pytest.mark.skipif(not hasattr(potential, 'RotateAndTiltWrapperPotential'),
+                    reason='RotateAndTiltWrapperPotential not available')
 def test_rotate_and_tilt_acc():
     '''RotateAndTilt should change the force direction when tilted.'''
     nfw = potential.NFWPotential()
@@ -794,6 +804,8 @@ def test_rotate_and_tilt_acc():
     np.testing.assert_allclose(np.linalg.norm(acc_tilt), np.linalg.norm(acc_bare), rtol=1e-8)
 
 
+@pytest.mark.skipif(not hasattr(potential, 'KuzminLikeWrapperPotential'),
+                    reason='KuzminLikeWrapperPotential not available')
 def test_kuzmin_like_wrapper():
     '''KuzminLikeWrapper should produce finite forces and match -grad(Phi).'''
     nfw = potential.NFWPotential()

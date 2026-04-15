@@ -23,15 +23,14 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 galpy = [
-    "galpy>=1.10",
+    "galpy>=1.9",
 ]
 test = [
     "pytest",
     "pytest-doctestplus",
     "pytest-cov",
-    "galpy>=1.10",
+    "galpy>=1.9",
     "astropy",
-    "scipy"
 ]
 docs = [
     "sphinx",
