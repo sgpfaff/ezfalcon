@@ -77,14 +77,14 @@ The following potentials are supported, along with any composition of them:
 
 **Potential Wrappers**
 
-- `Adiabatic contraction wrapper <https://docs.galpy.org/en/latest/reference/potentialadiabaticcontractwrapper.html>`_ (``AdiabaticContractionWrapperPotential``)
-- `Any time-dependent amplitude wrapper <https://docs.galpy.org/en/latest/reference/potentialtimedependentamplitude.html>`_ (``TimeDependentAmplitudeWrapperPotential``)
+- `Adiabatic contraction wrapper 🚧 <https://docs.galpy.org/en/latest/reference/potentialadiabaticcontractwrapper.html>`_ (``AdiabaticContractionWrapperPotential``)
+- `Any time-dependent amplitude wrapper 🚧 <https://docs.galpy.org/en/latest/reference/potentialtimedependentamplitude.html>`_ (``TimeDependentAmplitudeWrapperPotential``)
 - `Corotating rotation wrapper <https://docs.galpy.org/en/latest/reference/potentialcorotwrapper.html>`_ (``CorotatingRotationWrapperPotential``)
-- `Cylindrically-separable wrapper <https://docs.galpy.org/en/latest/reference/potentialcylindricallyseparablewrapper.html>`_ (``CylindricallySymmetricWrapperPotential``)
+- `Cylindrically-separable wrapper 🚧 <https://docs.galpy.org/en/latest/reference/potentialcylindricallyseparablewrapper.html>`_ (``CylindricallySymmetricWrapperPotential``)
 - `Dehnen-like smoothing wrapper <https://docs.galpy.org/en/latest/reference/potentialdehnensmoothwrapper.html>`_ (``DehnenSmoothWrapperPotential``)
 - `Gaussian-modulated amplitude wrapper <https://docs.galpy.org/en/latest/reference/potentialgaussampwrapper.html>`_ (``GaussianAmplitudeWrapperPotential``)
 - `Kuzmin-like wrapper <https://docs.galpy.org/en/latest/reference/potentialkuzminlikewrapper.html>`_ (``KuzminLikeWrapperPotential``)
-- `Oblate Staeckel wrapper <https://docs.galpy.org/en/latest/reference/potentialoblatestaeckelwrapper.html>`_ (``OblatePerfectEllipsoidWrapperPotential``)
+- `Oblate Staeckel wrapper 🚧 <https://docs.galpy.org/en/latest/reference/potentialoblatestaeckelwrapper.html>`_ (``OblatePerfectEllipsoidWrapperPotential``)
 - `Solid-body rotation wrapper <https://docs.galpy.org/en/latest/reference/potentialsolidbodyrotationwrapper.html>`_ (``SolidBodyRotationWrapperPotential``)
 - `Rotate-and-tilt wrapper <https://docs.galpy.org/en/latest/reference/potentialrotateandtiltwrapper.html>`_ (``RotateAndTiltWrapperPotential``)
 
