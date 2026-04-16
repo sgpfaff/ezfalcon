@@ -35,6 +35,12 @@ test = [
 docs = [
     "sphinx",
     "sphinx-automodapi",
+    "pydata-sphinx-theme",
+    "sphinx-design",
+    "nbsphinx",
+    "sphinx-copybutton",
+    "pandoc",
+    "ipykernel",
 ]
 
 [tool.setuptools]

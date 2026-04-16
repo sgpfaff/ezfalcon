@@ -1,17 +1,75 @@
-ezfalconv2 Documentation
-------------------------
+ezfalcon
+========
 
-This is the documentation for ezfalconv2.
+
+.. grid:: 1 2 2 3
+   :gutter: 2
+
+   .. grid-item-card:: Installation
+      :link: installation
+      :link-type: doc
+
+      How to install ezfalcon and its optional dependencies.
+
+   .. grid-item-card:: Quickstart
+      :link: quickstart
+      :link-type: doc
+
+      A minimal working example to get up and running fast.
+
+   .. grid-item-card:: User Guide
+      :link: user_guide/index
+      :link-type: doc
+
+      In-depth explanations of ezfalcon's core concepts: units, self-gravity,
+      external forces, and more.
+
+   .. grid-item-card:: Examples
+      :link: examples/index
+      :link-type: doc
+
+      Notebooks covering ezfalcon's features, from basics to
+      science applications.
+
+   .. grid-item-card:: Diagnostics
+      :link: diagnostics/index
+      :link-type: doc
+
+      Convergence tests, scaling benchmarks, and energy conservation
+      validation.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Getting Started
+   :hidden:
 
-   api
+   installation
+   quickstart
 
-Indices and tables
-==================
+.. toctree::
+   :maxdepth: 3
+   :caption: User Guide
+   :hidden:
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   user_guide/index
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Examples
+   :hidden:
+
+   examples/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+   :hidden:
+
+   changelog
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Diagnostics
+   :hidden:
+
+   diagnostics/index

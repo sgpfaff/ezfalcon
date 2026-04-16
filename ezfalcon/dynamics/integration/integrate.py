@@ -103,8 +103,8 @@ def _integrate(pos, vel, mass,
     steps_per_output = round(dt_out / dt)
     nsnaps = n_steps // steps_per_output + 1  # +1 for initial snapshot
 
-    ts_out = np.arange(nsnaps) * dt_out
-    ts_integrate = np.arange(n_steps + 1) * dt
+    ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out
+    ts_integrate = np.arange(n_steps + 1, dtype=np.float64) * dt
 
     positions = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)
     velocities = np.zeros((nsnaps, mass.shape[0], 3), dtype=np.float64)

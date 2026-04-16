@@ -12,10 +12,14 @@ import datetime
 from ezfalcon import __version__
 
 release = __version__
+version = __version__.split("+")[0]  # short version for display
 
-project = "ezfalconv2"
+project = "ezfalcon"
 author = "Gabriel Pfaffman"
 copyright = f"{datetime.datetime.now().year}, {author}"  # noqa: A001
+
+html_title = project
+html_short_title = project
 
 # -- General configuration ---------------------------------------------------
 
@@ -34,6 +38,9 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx_automodapi.automodapi",
     "sphinx_automodapi.smart_resolver",
+    "nbsphinx",
+    "sphinx_design",
+    "sphinx_copybutton",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -42,11 +49,20 @@ extensions = [
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = [
+    "_build", "Thumbs.db", ".DS_Store",
+    # All example notebooks — docs use .rst pages + _figures/ instead
+    "examples/*.ipynb",
+    "examples/EX1_Multicomponent_Shell.rst",
+    "examples/EX2_Disk.rst",
+    "examples/EX4_satellite_script.py",
+    "examples/EX5_GC_Satellite_script.py",
+    "tutorials/**",
+]
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-source_suffix = ".rst"
+source_suffix = ['.rst', '.ipynb']
 
 # The master toctree document.
 master_doc = "index"
@@ -63,12 +79,33 @@ intersphinx_mapping = {"python": ("https://docs.python.org/", None)}
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "alabaster"
+html_theme = "pydata_sphinx_theme"
+
+html_theme_options = {
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/sgpfaff/ezfalcon",
+            "icon": "fa-brands fa-github",
+        },
+    ],
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 # html_static_path = ["_static"]
+
+# -- Options for nbsphinx ----------------------------------------------------
+
+nbsphinx_execute = "never"
+
+# Plotly requires its JS bundle to render application/vnd.plotly.v1+json outputs.
+# The CDN bundle is injected into every page so interactive Plotly charts in
+# executed notebooks work without needing requirejs.
+html_js_files = [
+    "https://cdn.plot.ly/plotly-2.35.2.min.js",
+]
 
 # By default, when rendering docstrings for classes, sphinx.ext.autodoc will
 # make docs with the class-level docstring and the class-method docstrings,

@@ -1631,7 +1631,7 @@ class Sim:
         dE = self.dE(t=..., use_cached=use_cached, method=method, **kwargs)[::skip_every]
         plt.plot(self.times[::skip_every], dE, c='k')
         plt.yscale('log')
-        plt.xlabel("Time (Myr)")
+        plt.xlabel("Time (Gyr)")
         plt.ylabel("$|\Delta E / E_0|$")
         plt.title("Energy Conservation")
         if filename is not None:
@@ -1666,7 +1666,7 @@ class Sim:
             plt.plot(self.times, (np.sum(self.py(), axis=-1)-np.sum(self.py(t=0), axis=-1))/np.sum(self.py(t=0), axis=-1), alpha=0.5, lw=4, label='$p_y$')
             plt.plot(self.times, (np.sum(self.pz(), axis=-1)-np.sum(self.pz(t=0), axis=-1))/np.sum(self.pz(t=0), axis=-1), alpha=0.5, lw=4, label='$p_z$')
         plt.plot(self.times, np.sum((np.sum(self.p(), axis=-1)-np.sum(self.p(t=0), axis=-1)), axis=-1)/ np.sum(self.p(t=0)), c='k', label='Total')
-        plt.xlabel("Time (Myr)")
+        plt.xlabel("Time (Gyr)")
         plt.ylabel("$|\Delta p / p_0|$")
         plt.legend()
         plt.title(f"Momentum Conservation")
