@@ -1,4 +1,9 @@
 
+ezfalcon
+========
+
+A Python package for self-gravitating N-body simulations, powered by the
+falcON tree-code algorithm.
 
 
 License
