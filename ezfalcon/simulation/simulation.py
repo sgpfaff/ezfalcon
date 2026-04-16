@@ -322,13 +322,13 @@ class Sim:
         ----------
         t_end : float
             End time of the simulation.
-            Units: Gyr
+            Units: `Gyr`
         dt : float
             Timestep for integration.
-            Units: Gyr
+            Units: `Gyr`
         dt_out : float
             Output interval. Must be a multiple of dt.
-            Units: Gyr
+            Units: `Gyr`
         method : str, optional
             Method to use for computing self-gravity. Included options are:
             - 'falcON' (default): fast multipole method implemented in falcON.

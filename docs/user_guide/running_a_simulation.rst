@@ -1,4 +1,6 @@
 Running a Simulation
 ====================
 
-🚧 *Still working on it...*
+API
+---
+.. automethod:: ezfalcon.simulation.Sim.run

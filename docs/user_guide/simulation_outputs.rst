@@ -1,9 +1,6 @@
 Simulation Outputs
 ==================
 
-🚧 *Still working on it...*
-
-
 Accessing Snapshots
 -------------------
 
@@ -216,8 +213,8 @@ Acceleration Accessors
      - km/s²
 
 
-Diagnostics
------------
+Making Diagnostic Plots
+-----------------------
 
 .. list-table::
    :header-rows: 1
@@ -230,6 +227,7 @@ Diagnostics
    * - :meth:`~ezfalcon.simulation.Sim.plot_momentum_diagnostic`
      - Plot momentum conservation
 
+.. _component_accessors:
 
 Component Accessors
 -------------------
@@ -266,6 +264,7 @@ API
 .. autoclass:: ezfalcon.simulation.Sim
    :members:
    :undoc-members:
+   :exclude-members: add_particles, run, add_external_pot, add_external_acc
 
 .. autoclass:: ezfalcon.simulation.Component
    :members:

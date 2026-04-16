@@ -1,13 +1,7 @@
 Units
 =====
 
-🚧 *Still working on it...*
-
-
-Internal Units
---------------
-
-🚧 *Still working on it...*
+The internal units of :ref:`home` are as follows:
 
 .. list-table::
    :header-rows: 1
@@ -39,10 +33,4 @@ Internal Units
 ``return_internal``
 -------------------
 
-🚧 *Still working on it...*
 
-
-API
----
-
-.. autofunction:: ezfalcon.util.cyl2cart

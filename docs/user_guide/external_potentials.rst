@@ -1,16 +1,26 @@
-External Potentials
-===================
+Adding External Potentials
+==========================
 
-🚧 *Still working on it...*
+To add an external potential to the :class:`~ezfalcon.simulation.Sim`, use the :func:`~ezfalcon.simulation.Sim.add_external_pot` method. 
+This method takes a (galpy) potential and adds it to the simulation. 
 
+.. code-block:: python
+
+    from galpy.potential import NFWPotential
+
+    extpot = NFWPotential()
+    sim.add_external_pot(extpot)
+
+You can add as many external potentials as you'd like, and they will be summed together to compute the total external acceleration on each particle.
+You can also use the :func:`~ezfalcon.simulation.Sim.compute_external_pot` method to compute the external potential and the
+:func:`~ezfalcon.simulation.Sim.external_acc`, :func:`~ezfalcon.simulation.Sim.external_ax`, :func:`~ezfalcon.simulation.Sim.external_ay`, :func:`~ezfalcon.simulation.Sim.external_az` methods to compute the external acceleration 
+from the added potentials at any point in time during the simulation.
 
 galpy
 -----
 
-🚧 *Still working on it...*
-
-ezfalcon supports external potentials from `galpy <https://docs.galpy.org>`_.
-The following potentials are supported:
+:ref:`home` supports external potentials from `galpy <https://docs.galpy.org>`_.
+The following potentials are supported, along with any composition of them:
 
 **Spherical**
 
@@ -63,17 +73,9 @@ The following potentials are supported:
 - `Spiral arms potential <https://docs.galpy.org/en/latest/reference/potentialspiralarms.html>`_ (``SpiralArmsPotential``)
 - `Constant (null) potential <https://docs.galpy.org/en/latest/reference/potentialnull.html>`_ (``NullPotential``)
 - ``MWPotential2014`` (composite: NFW + Miyamoto-Nagai + power-law bulge)
-- Arbitrary sums of the above
 
 
-Potential Wrappers
-------------------
-
-🚧 *Still working on it...*
-
-Wrappers modify an existing potential, for example by making its amplitude
-time-dependent or applying a rotation. They can be applied to any supported
-galpy potential.
+**Potential Wrappers**
 
 - `Adiabatic contraction wrapper <https://docs.galpy.org/en/latest/reference/potentialadiabaticcontractwrapper.html>`_ (``AdiabaticContractionWrapperPotential``)
 - `Any time-dependent amplitude wrapper <https://docs.galpy.org/en/latest/reference/potentialtimedependentamplitude.html>`_ (``TimeDependentAmplitudeWrapperPotential``)
@@ -85,4 +87,12 @@ galpy potential.
 - `Oblate Staeckel wrapper <https://docs.galpy.org/en/latest/reference/potentialoblatestaeckelwrapper.html>`_ (``OblatePerfectEllipsoidWrapperPotential``)
 - `Solid-body rotation wrapper <https://docs.galpy.org/en/latest/reference/potentialsolidbodyrotationwrapper.html>`_ (``SolidBodyRotationWrapperPotential``)
 - `Rotate-and-tilt wrapper <https://docs.galpy.org/en/latest/reference/potentialrotateandtiltwrapper.html>`_ (``RotateAndTiltWrapperPotential``)
+
+agama 🚧
+-----------------------
+🚧 *Still working on it...* 🚧
+
+API
+---
+.. automethod:: ezfalcon.simulation.Sim.add_external_pot
 

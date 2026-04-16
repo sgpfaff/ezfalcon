@@ -6,5 +6,5 @@ Diagnostics
    :hidden:
 
    External Potential Benchmark: Ellipsoidal Potentials <ellipsoidal_benchmark>
-
+   
 - :doc:`External Potential Benchmark: Ellipsoidal Potentials <ellipsoidal_benchmark>`
