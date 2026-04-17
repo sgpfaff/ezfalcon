@@ -3,12 +3,12 @@ Leapfrog Integrator.
 
 '''
 
-def _leapfrog_step(pos, vel, acc0, acc_fn, dt):
+def _leapfrog_step(pos, vel, acc0, acc_fn, dt, t=None):
     """Perform a single leapfrog step."""
     # Kick-Drift-Kick sequence
     vel_half = leapfrog_kick(vel, acc0, dt/2)
     pos = leapfrog_drift(pos, vel_half, dt)
-    acc, self_gravity, self_pot = acc_fn(pos)
+    acc, self_gravity, self_pot = acc_fn(pos, t=t)
     vel = leapfrog_kick(vel_half, acc, dt/2)
 
     return pos, vel, acc, self_gravity, self_pot

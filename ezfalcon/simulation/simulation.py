@@ -1696,5 +1696,5 @@ class Sim:
 
     # --- Output to external formats -------------------------------------------------------
 
-    def to_galpy(self, t):
-        raise NotImplementedError('Outputting galpt orbit is not yet supported.')
+    def to_galpy_orbit(self, t):
+        raise NotImplementedError('Outputting galpy orbit is not yet supported.')

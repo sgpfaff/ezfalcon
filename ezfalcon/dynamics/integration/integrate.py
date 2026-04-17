@@ -73,7 +73,7 @@ def _integrate(pos, vel, mass,
         Units: `kpc^2 / Myr^2`
     '''
     
-    def acc_fn(pos, mass, method, **kwargs):
+    def acc_fn(pos, t, mass, method, **kwargs):
         '''
         Returns None for self_acc (self_pot) if 
         return_self_gravity (return_self_potential) is False.
@@ -94,7 +94,7 @@ def _integrate(pos, vel, mass,
             else:
                 self_pot = None
         for fn in extra_acc:
-            ext_acc += fn(pos, t=0)
+            ext_acc += fn(pos, t=t)
         acc += ext_acc
         return acc, self_acc, self_pot
     
@@ -113,7 +113,7 @@ def _integrate(pos, vel, mass,
 
     self_potentials = None
     self_gravities = None
-    acc, self_acc, self_pot = acc_fn(pos, mass, method=self_gravity_method, **kwargs)
+    acc, self_acc, self_pot = acc_fn(pos, 0.0, mass=mass, method=self_gravity_method, **kwargs)
 
     if return_self_potential:
         self_potentials = np.zeros((nsnaps, mass.shape[0]), dtype=np.float64)
@@ -127,7 +127,7 @@ def _integrate(pos, vel, mass,
         (pos, vel, acc, 
         self_acc, self_pot) = _leapfrog_step(pos, vel, acc, partial(acc_fn, mass=mass, 
                                                                     method=self_gravity_method, **kwargs), 
-                                            dt=dt)
+                                            dt=dt, t=t)
         if step % steps_per_output == 0 and i_out < nsnaps:
             positions[i_out] = pos.copy()
             velocities[i_out] = vel.copy()
