@@ -1911,3 +1911,72 @@ def test_times_array_correct():
     sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct', eps=0.0)
     expected_times = np.array([0.0, 0.5, 1.0])
     np.testing.assert_allclose(sim.times, expected_times, atol=1e-14)
+
+
+# --- Time-dependent external potential bug regression -------------------------------------- #
+
+def test_compute_external_pot_uses_physical_time():
+    '''
+    Regression: compute_external_pot must pass the *physical* time (Gyr)
+    to the external potential function, not the integer snapshot index.
+
+    A DehnenSmoothWrapperPotential that is zero at t=0 and fully grown
+    by t=tform+tsteady should give nonzero potential at later snapshots.
+    If the bug is present (index passed instead of time), the potential
+    would be evaluated at the wrong time.
+    '''
+    from galpy.potential import (LogarithmicHaloPotential,
+                                 DehnenSmoothWrapperPotential)
+    static_pot = LogarithmicHaloPotential(normalize=1., q=0.9)
+    smooth_pot = DehnenSmoothWrapperPotential(
+        pot=static_pot, tform=0., tsteady=1.0 * u.Gyr
+    )
+
+    sim = Sim()
+    sim.add_external_pot(smooth_pot)
+    pos = np.array([[8.0, 0.0, 0.0]])
+    vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
+    mass = np.array([1e5])
+    sim.add_particles('star', pos=pos, vel=vel, mass=mass)
+
+    # Run so we get multiple snapshots at different physical times
+    sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct', eps=0.0)
+    # times = [0.0, 0.5, 1.0] -> indices [0, 1, 2]
+
+    # At index 2, the physical time is 1.0 Gyr.
+    # Get potential via integer index
+    pot_idx = sim.compute_external_pot(2, return_internal=True)
+    # Get potential via float time (unambiguously physical time)
+    pot_time = sim.compute_external_pot(1.0, return_internal=True)
+
+    # These must agree — if the bug were present, pot_idx would use t=2
+    # (the index) instead of t=1.0 Gyr, giving different results.
+    np.testing.assert_allclose(pot_idx, pot_time, rtol=1e-14)
+
+
+def test_external_acc_uses_physical_time():
+    '''
+    Regression: external_acc must pass the *physical* time (Gyr)
+    to the external acceleration function, not the raw integer index.
+    '''
+    from galpy.potential import (LogarithmicHaloPotential,
+                                 DehnenSmoothWrapperPotential)
+    static_pot = LogarithmicHaloPotential(normalize=1., q=0.9)
+    smooth_pot = DehnenSmoothWrapperPotential(
+        pot=static_pot, tform=0., tsteady=2.0 * u.Gyr
+    )
+
+    sim = Sim()
+    sim.add_external_pot(smooth_pot)
+    pos = np.array([[8.0, 0.0, 0.0]])
+    vel = np.array([[0.0, 220.0 * KMS_TO_KPCGYR, 0.0]])
+    mass = np.array([1e5])
+    sim.add_particles('star', pos=pos, vel=vel, mass=mass)
+
+    sim.run(t_end=1.0, dt=0.1, dt_out=0.5, method='direct', eps=0.0)
+
+    # At index 2, the physical time is 1.0 Gyr.
+    acc_idx = sim.external_acc(2, return_internal=True)
+    acc_time = sim.external_acc(1.0, return_internal=True)
+
+    np.testing.assert_allclose(acc_idx, acc_time, rtol=1e-14)

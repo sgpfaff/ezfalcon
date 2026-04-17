@@ -9,7 +9,7 @@ galpy
 
 see section on df sampling interface.
 
-.. meth:: `~ezfalcon.simulation.Sim.to_galpy`
+.. automethod:: ezfalcon.simulation.Sim.to_galpy_orbit
 
 agama
 -----------------------

@@ -1039,18 +1039,18 @@ class Sim:
             External potential at each snapshot.
             Units: `Msun km^2 / s^2`
         '''
-        t = self._ti(t, vectorized=True)
-        if isinstance(t, (int, np.integer)):
+        ti = self._ti(t, vectorized=True)
+        if isinstance(ti, (int, np.integer)):
+            t_phys = self._times[ti]
             ext_pot = np.zeros(self._mass.shape[0])
             for fn in self._ext_pot_fns:
-                ext_pot += fn(self.pos(t=t, return_internal=True), t=t)
+                ext_pot += fn(self.pos(t=ti, return_internal=True), t=t_phys)
         else:
             warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
-            if t is ...:
-                t = self._times
-            ext_pot = np.zeros((len(t), self._mass.shape[0]))
+            times = self._times
+            ext_pot = np.zeros((len(times), self._mass.shape[0]))
             for fn in self._ext_pot_fns:
-                for i, t_i in enumerate(t):
+                for i, t_i in enumerate(times):
                     ext_pot[i] += fn(self.pos(t=t_i, return_internal=True), t=t_i)
         return self._mass * ext_pot
     
@@ -1518,9 +1518,11 @@ class Sim:
             each particle at each snapshot.
             Units: `km / s^2`
         '''
-        ext_acc = np.zeros_like(self._velocities[self._ti(t)])
+        ti = self._ti(t)
+        t_phys = self._times[ti]
+        ext_acc = np.zeros_like(self._velocities[ti])
         for fn in self._ext_acc_fns:
-            ext_acc += fn(self.pos(t=t, return_internal=True), t=t)
+            ext_acc += fn(self.pos(t=ti, return_internal=True), t=t_phys)
         return ext_acc
     
     @unit_handler('acceleration')
