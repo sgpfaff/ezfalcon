@@ -2,6 +2,10 @@
 ezfalcon
 ========
 
+.. image:: https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml/badge.svg
+   :target: https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml
+   :alt: Tests
+
 A Python package for self-gravitating N-body simulations, powered by the
 falcON tree-code algorithm.
 

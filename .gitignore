@@ -271,3 +271,5 @@ docs/examples/EX5_GC_stream/data/times.npy
 docs/tutorials/python_generators.ipynb
 ezfalcon/version.py
 ezfalcon/version.py
+nemo/
+
