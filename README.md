@@ -1,13 +1,21 @@
 
 ezfalcon
 ========
-
-.. image:: https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml/badge.svg
-   :target: https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml
-   :alt: Tests
+![https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml][https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml/badge.svg]
 
 A Python package for self-gravitating N-body simulations, powered by the
 falcON tree-code algorithm.
+
+Installation
+------------
+***Please note*** *that this code is under rapid development and backwards compatility is currently not guarenteed.*
+
+Until it is added to PyPI in the near future, you can use the code by git cloning this repository and
+running the following in your terminal after changing into the ezfalcon directory:
+
+```bash
+pip install .
+```
 
 
 License
