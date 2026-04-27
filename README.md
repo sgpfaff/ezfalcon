@@ -1,7 +1,6 @@
 
 ezfalcon
 ========
-![https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml][https://github.com/sgpfaff/ezfalcon/actions/workflows/tests.yml/badge.svg]
 
 A Python package for self-gravitating N-body simulations, powered by the
 falcON tree-code algorithm.
@@ -56,5 +55,7 @@ the errors and assumptions that seasoned contributors have glossed over.
 Note: This disclaimer was originally written by
 `Adrienne Lowe <https://github.com/adriennefriend>`_ for a
 `PyCon talk <https://www.youtube.com/watch?v=6Uj746j9Heo>`_, and was adapted by
-ezfalconv2 based on its use in the README file for the
+ezfalcon based on its use in the README file for the
 `MetPy project <https://github.com/Unidata/MetPy>`_.
+
+
