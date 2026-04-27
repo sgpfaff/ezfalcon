@@ -9,10 +9,12 @@ Installation
 ------------
 ***Please note*** *that this code is under rapid development and backwards compatility is currently not guarenteed.*
 
-Until it is added to PyPI in the near future, you can use the code by git cloning this repository and
-running the following in your terminal after changing into the ezfalcon directory:
+Until it is added to PyPI in the near future, you can use the code by
+running the following in your terminal:
 
 ```bash
+git clone https://github.com/sgpfaff/ezfalcon.git
+cd ezfalcon
 pip install .
 ```
 
