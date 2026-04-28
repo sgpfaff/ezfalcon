@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from ezfalcon.simulation import Sim, Component
 from ezfalcon.util import G_INTERNAL
-from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
+from ezfalcon.dynamics.forces.self_gravity.direct_summation import _direct_summation_py as _direct_summation
 
 np.random.seed(42)
 

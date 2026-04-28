@@ -7,7 +7,7 @@ from ezfalcon.simulation import Sim, Component
 import numpy as np
 from ezfalcon.util import G_INTERNAL
 from ezfalcon.util.units import KMS_TO_KPCGYR
-from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
+from ezfalcon.dynamics.forces.self_gravity.direct_summation import _direct_summation_py as _direct_summation
 import astropy.units as u
 
 

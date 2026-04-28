@@ -1,5 +1,5 @@
 import numpy as np
-from ..dynamics.acceleration import self_gravity
+from ..dynamics.forces.self_gravity import self_gravity
 from ._decorators import _resolve_use_cached, _resolve_t
 from ..util.units import unit_handler
 import warnings

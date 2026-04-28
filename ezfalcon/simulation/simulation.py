@@ -4,7 +4,8 @@ Simulation class for ezfalcon.
 
 import numpy as np
 from .component import Component
-from ..dynamics import _integrate, self_gravity
+from ..dynamics import _integrate
+from ..dynamics.forces.self_gravity import self_gravity
 from ..util.units import unit_handler, KMS_TO_KPCGYR
 import warnings
 

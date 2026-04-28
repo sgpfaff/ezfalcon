@@ -1,5 +1,5 @@
 from .leapfrog import _leapfrog_step #, leapfrog_drift, leapfrog_kick
-from ..acceleration import self_gravity
+from ..forces.self_gravity import self_gravity
 import numpy as np
 from tqdm import tqdm
 from functools import partial

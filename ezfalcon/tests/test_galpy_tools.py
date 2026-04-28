@@ -1,7 +1,7 @@
 import pytest
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential
-from ezfalcon.tools import galpydfsampler, galpy_orbit_to_ezfalcon, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
+from ezfalcon.tools import galpydfsampler, galpy_orbit_to_ezfalcon, mkHernquist_galpy, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
 from ezfalcon.tools.galpy_tools import _check_df, galpysampler
 import numpy as np
 import astropy.units as u
@@ -107,6 +107,20 @@ def test_mkNFW_with_df_kwargs():
                                    nfw_df_kwargs={'widrow': True, 'rmax': 5.0})
     assert pos.shape == (50, 3)
 
+# --- mkHernquist_galpy ---------------------------------------------------------------------- #
+
+def test_mkHernquist_shapes():
+    pos, vel, masses = mkHernquist_galpy(m=1e6, a=1.0, n=50)
+    assert pos.shape == (50, 3)
+    assert vel.shape == (50, 3)
+    assert masses.shape == (50,)
+    np.testing.assert_allclose(masses.sum(), 1e6)
+
+def test_mkHernquist_center_offset():
+    pos, vel, masses = mkHernquist_galpy(m=1e6, a=1.0, n=200,
+                                         center_pos=[50, 0, 0])
+    assert np.mean(pos[:, 0]) > 20
+
 # --- Radial density profile tests ----------------------------------------------------------- #
 
 _GALPY_RO = 8.0
@@ -123,17 +137,18 @@ def test_mkPlummer_density_profile():
 def test_mkNFW_density_profile():
     """Sampled NFW radii follow the analytical enclosed-mass CDF."""
     from scipy.stats import kstest
-    rmax = 10.0  # natural units (same as position units for default NFWPotential)
-    # Default NFWPotential has a=1.0 (scale radius in natural units).
-    # Without explicit turn_physical_on, positions come out in natural units.
-    r_s = 1.0
+    rmax_nat = 10.0    # truncation radius in galpy natural units (= rmax_nat * 8 kpc)
+    # NFWPotential has physical units on (ro=8 kpc, vo=220 km/s), so positions
+    # come out in physical kpc.  Scale radius = a=1 natural unit = 8 kpc.
+    r_s = _GALPY_RO    # kpc
+    rmax_kpc = rmax_nat * _GALPY_RO
 
     pos, vel, masses = mkNFW_galpy(m=1e10, n=5000,
-                                   nfw_df_kwargs={'rmax': rmax})
-    r = np.linalg.norm(pos, axis=1)
+                                   nfw_df_kwargs={'rmax': rmax_nat})
+    r = np.linalg.norm(pos, axis=1)  # kpc
 
     # NFW CDF: M(<r)/M(<rmax), where M(r) propto ln(1+x) - x/(1+x), x = r/r_s
-    x_max = rmax / r_s
+    x_max = rmax_kpc / r_s
     f_max = np.log(1 + x_max) - x_max / (1 + x_max)
 
     def nfw_cdf(r_val):

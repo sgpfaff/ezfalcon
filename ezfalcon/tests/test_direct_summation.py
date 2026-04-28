@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from ezfalcon.dynamics.acceleration.self_gravity import _direct_summation
+from ezfalcon.dynamics.forces.self_gravity.direct_summation import _direct_summation_py as _direct_summation
 from ezfalcon.util.units import G_INTERNAL
 
 np.random.seed(42)
