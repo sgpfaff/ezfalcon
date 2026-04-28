@@ -1,2 +1,2 @@
 from .self_gravity import *
-from .external_forces import *
+from .external_force import *

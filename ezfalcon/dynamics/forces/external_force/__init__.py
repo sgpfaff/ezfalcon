@@ -1,1 +1,3 @@
-from ExternalGalpyPotential import ExternalGalpyPotential
+from .ExternalGalpyPotential import ExternalGalpyPotential
+from .ExternalAgamaPotential import ExternalAgamaPotential
+from .DynamicalFriction import ChandrasekarDF
