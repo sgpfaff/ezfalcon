@@ -40,38 +40,21 @@ tambora
       Convergence tests, scaling benchmarks, and energy conservation
       validation.
 
+   .. grid-item-card:: What's New
+      :link: changelog
+      :link-type: doc
+
+      Release notes and the changelog for each version of tambora.
+
+.. The navbar is built from the top-level toctree below (Installation,
+.. Quickstart, User Guide, Examples). Diagnostics and the changelog are kept
+.. off the navbar on purpose — they are reachable from the cards above and are
+.. marked :orphan: so they still build and remain linkable.
+
 .. toctree::
-   :maxdepth: 2
-   :caption: Getting Started
    :hidden:
 
    installation
    quickstart
-
-.. toctree::
-   :maxdepth: 3
-   :caption: User Guide
-   :hidden:
-
    user_guide/index
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Examples
-   :hidden:
-
    examples/index
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Reference
-   :hidden:
-
-   changelog
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Diagnostics
-   :hidden:
-
-   diagnostics/index

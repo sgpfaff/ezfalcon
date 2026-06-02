@@ -38,9 +38,30 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx_automodapi.automodapi",
     "sphinx_automodapi.smart_resolver",
-    "nbsphinx",
+    "myst_nb",
     "sphinx_design",
     "sphinx_copybutton",
+]
+
+# -- MyST / MyST-NB ----------------------------------------------------------
+# myst_nb activates myst_parser; do NOT also list "myst_parser" above.
+myst_enable_extensions = [
+    "dollarmath",   # $...$ / $$...$$ math (used in the user guide)
+    "colon_fence",  # ::: fences as an alternative to ```{directive}
+]
+
+# Notebook execution. "cache" runs each notebook/MyST-notebook once and reuses
+# the cached outputs until its content changes, so unchanged pages don't re-run
+# on every build. Heavy science notebooks are not executed here (the Examples
+# section renders committed outputs via its .rst wrappers); only the lightweight
+# basic-usage cells in the User Guide execute, and a failure fails the build.
+nb_execution_mode = "cache"
+nb_execution_raise_on_error = True
+nb_execution_timeout = 120
+nb_execution_excludepatterns = [
+    "examples/**",
+    "tutorials/**",
+    "diagnostics/**",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -51,6 +72,8 @@ extensions = [
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
     "_build", "Thumbs.db", ".DS_Store",
+    # Internal scratch notes — not a docs page (now that .md is a source suffix).
+    "tests_and_docs_to_write.md",
     # All example notebooks — docs use .rst pages + _figures/ instead
     "examples/*.ipynb",
     "examples/EX1_Multicomponent_Shell.rst",
@@ -61,9 +84,13 @@ exclude_patterns = [
 ]
 
 # The suffix(es) of source filenames.
-# nbsphinx automatically registers .ipynb — do NOT list it here
-# or it gets associated with the RST parser instead of NotebookParser.
-source_suffix = ['.rst']
+# myst_nb parses .md (MyST Markdown, incl. text-based notebooks with
+# {code-cell} blocks) and .ipynb; .rst stays on the reStructuredText parser.
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "myst-nb",
+    ".ipynb": "myst-nb",
+}
 
 # The master toctree document.
 master_doc = "index"
@@ -90,6 +117,21 @@ html_theme_options = {
             "icon": "fa-brands fa-github",
         },
     ],
+    # Navbar carries the top-level sections; the left sidebar shows only the
+    # pages *within* the current section (show_nav_level=1) so the two don't
+    # duplicate each other.
+    "navbar_align": "left",
+    "show_nav_level": 1,
+    "navigation_depth": 2,
+    "collapse_navigation": False,
+    "show_toc_level": 2,
+}
+
+# Single-page sections have nothing to put in a left sidebar (it would just
+# echo the navbar), so drop it for a cleaner, wider layout there.
+html_sidebars = {
+    "installation": [],
+    "quickstart": [],
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -97,13 +139,9 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 # html_static_path = ["_static"]
 
-# -- Options for nbsphinx ----------------------------------------------------
-
-nbsphinx_execute = "never"
-
 # Plotly requires its JS bundle to render application/vnd.plotly.v1+json outputs.
 # The CDN bundle is injected into every page so interactive Plotly charts in
-# executed notebooks work without needing requirejs.
+# notebooks work without needing requirejs.
 html_js_files = [
     "https://cdn.plot.ly/plotly-2.35.2.min.js",
 ]
