@@ -14,7 +14,7 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 from tambora.simulation import Sim
-from tambora.util.units import (
+from tambora.tambora.tools.util.units import (
     G_INTERNAL,
     G_KPC_KMS,
     KMS_TO_KPCGYR,

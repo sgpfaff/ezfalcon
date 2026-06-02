@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from tambora.simulation import Sim, Component
-from tambora.util import G_INTERNAL
+from tambora.tambora.tools.util import G_INTERNAL
 from tambora.dynamics import DirectSummationGravity
 
 np.random.seed(42)

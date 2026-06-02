@@ -9,7 +9,7 @@ from ..dynamics import (_runner, self_gravity, BaseForce, SelfGravityForce, Null
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
-from ..util.units import unit_handler, KMS_TO_KPCGYR
+from ..tools.util.units import unit_handler, KMS_TO_KPCGYR
 import warnings
 import inspect
 from typing import Optional

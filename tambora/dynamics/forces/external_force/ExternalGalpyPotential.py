@@ -1,6 +1,6 @@
 from .MassIndependentConservForce import MassIndependentConservForce
 import galpy
-from ....util._galpy_bridge import (
+from ....tools.util._galpy_bridge import (
                 _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
                 _check_physical, _check_supported_pot,
                 _ensure_pot, _iter_components,

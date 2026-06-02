@@ -1,12 +1,12 @@
 import numpy as np
-from ..util.units import KMS_TO_KPCGYR
+from .util.units import KMS_TO_KPCGYR
 
 _GALPY_INSTALL_URL = "https://docs.galpy.org/en/stable/installation.html"
 
 try:
     from galpy import df, potential
     from galpy.util.conversion import mass_in_msol
-    from ..util._galpy_bridge import _check_physical
+    from .util._galpy_bridge import _check_physical
     _GALPY_IMPORT_ERROR = None
 except ImportError as exc:  # galpy (an optional dependency) is not installed
     df = potential = mass_in_msol = _check_physical = None

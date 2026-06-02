@@ -31,7 +31,7 @@ plt.rcParams['ytick.minor.visible'] = True
 
 from galpy.potential import PlummerPotential
 from galpy.df import isotropicPlummerdf
-from tambora.util import galpydfsampler
+from tambora.tambora.tools.util import galpydfsampler
 from tambora.simulation import Sim
 import astropy.units as u
 
