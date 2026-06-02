@@ -6,7 +6,7 @@ Installation
 
 Basic Installation
 ------------------
-The latest pre-release version of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+The latest pre-release version of :ref:`home` can be installed using pip as follows:
 
 .. code-block:: python
 
