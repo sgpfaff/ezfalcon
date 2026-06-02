@@ -50,19 +50,12 @@ myst_enable_extensions = [
     "colon_fence",  # ::: fences as an alternative to ```{directive}
 ]
 
-# Notebook execution. "cache" runs each notebook/MyST-notebook once and reuses
-# the cached outputs until its content changes, so unchanged pages don't re-run
-# on every build. Heavy science notebooks are not executed here (the Examples
-# section renders committed outputs via its .rst wrappers); only the lightweight
-# basic-usage cells in the User Guide execute, and a failure fails the build.
-nb_execution_mode = "cache"
-nb_execution_raise_on_error = True
-nb_execution_timeout = 120
-nb_execution_excludepatterns = [
-    "examples/**",
-    "tutorials/**",
-    "diagnostics/**",
-]
+# Notebooks are never executed at build time. The User Guide pages are .ipynb
+# notebooks committed *with their outputs* (re-run them locally whenever you
+# want to refresh the docs), and the Examples render committed outputs too, so
+# the build just renders what's stored. This keeps RTD builds fast and means
+# the build needs no science dependencies to run cells.
+nb_execution_mode = "off"
 
 # Add any paths that contain templates here, relative to this directory.
 # templates_path = ["_templates"]

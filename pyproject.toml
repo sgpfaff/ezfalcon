@@ -38,7 +38,6 @@ docs = [
     "pydata-sphinx-theme",
     "sphinx-design",
     "myst-nb>=1.1",
-    "jupyter-cache",
     "sphinx-copybutton",
     "pandoc",
     "ipykernel",
@@ -56,13 +55,13 @@ version_file = "tambora/version.py"
 local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
+# Only the package is unit-tested here. Docs code correctness is enforced by
+# the Sphinx build instead (myst-nb executes the User Guide cells with
+# nb_execution_raise_on_error=True), so scanning docs/ for .rst doctests is
+# redundant — and it made collection crawl through the heavy examples/ tree.
 testpaths = [
   "tambora",
-  "docs",
 ]
-doctest_plus = "enabled"
-text_file_format = "rst"
-addopts = "--doctest-rst"
 norecursedirs = ["tambora[\\/]_dev"]
 
 [tool.coverage.run]
