@@ -3,7 +3,7 @@ import warnings
 from galpy import potential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
-from tambora.tambora.tools.util import _galpy_bridge
+from tambora.tools.util import _galpy_bridge
 from itertools import product
 from functools import partial
 import astropy.units as u
@@ -348,7 +348,7 @@ def test_identify_unsupported_potential(unsupported_potential):
 def test_acc_units():
     '''Verify acc_fn returns the correct analytic value in internal units
     for a Kepler potential at a known position.'''
-    from tambora.tambora.tools.util.units import G_INTERNAL
+    from tambora.tools.util.units import G_INTERNAL
     # Kepler potential: a = -GM/r^2 rhat
     from galpy.util.conversion import get_physical
     M_msun = 1e7 # Msun
@@ -367,7 +367,7 @@ def test_acc_units():
 def test_pot_units():
     '''Verify pot_fn returns the correct analytic value in internal units
     for a Kepler potential at a known position.'''
-    from tambora.tambora.tools.util.units import G_INTERNAL
+    from tambora.tools.util.units import G_INTERNAL
     from galpy.util.conversion import get_physical
     M_msun = 1e7 # Msun
     pot = potential.KeplerPotential(amp=M_msun * u.Msun)  # amp=1 Msun in physical units

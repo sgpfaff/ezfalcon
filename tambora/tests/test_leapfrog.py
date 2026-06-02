@@ -1,6 +1,6 @@
 from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
 from tambora.dynamics import ExternalGalpyPotential
 from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
@@ -14,7 +14,7 @@ import numpy as np
 
 from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
+from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
 from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
