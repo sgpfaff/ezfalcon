@@ -37,7 +37,7 @@ Forces
 .. grid:: 1 2 2 2
    :gutter: 2
 
-   .. grid-item-card:: Force Types
+   .. grid-item-card:: Types of Forces
       :link: force_types
       :link-type: doc
 
