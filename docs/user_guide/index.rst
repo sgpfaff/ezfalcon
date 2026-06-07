@@ -49,36 +49,30 @@ Simulations
       Access positions, velocities, energies, and diagnostics.
 
 
-Self-Gravity
-------------
+Forces
+------
 
 .. grid:: 1 2 2 2
    :gutter: 2
 
-   .. grid-item-card:: Computing Self-Gravity
-      :link: computing_self_gravity
+   .. grid-item-card:: Force Types
+      :link: force_types
       :link-type: doc
 
-      Compute self-gravity accelerations and the potential.
+      External, self-gravity, and non-inertial forces.
 
-   .. grid-item-card:: Per-Component Self-Gravity
-      :link: computing_component_self_gravity
+   .. grid-item-card:: Self-Gravity Forces and Solvers
+      :link: self_gravity_forces_and_solvers
       :link-type: doc
 
-      Restrict self-gravity to individual components.
+      Compute self-gravity forces with falcON, direct summation, or Barnes-Hut. Per-component self-gravity.
+      Softening lengths. Supported Methods
 
-   .. grid-item-card:: Softening Lengths
-      :link: softening_lengths
+   .. grid-item-card:: External Conservative Forces and Potentials
+      :link: external_conservative_forces_and_potentials
       :link-type: doc
 
-      Choose scalar or per-particle gravitational softening.
-
-   .. grid-item-card:: Supported Methods
-      :link: self_gravity_methods
-      :link-type: doc
-
-      falcON, direct summation, and Barnes-Hut tree solvers.
-
+      Define and apply conservative forces from potentials.
 
 Tools & Interoperability
 ------------------------
