@@ -13,24 +13,10 @@ All About Simulations
    :gutter: 2
 
    .. grid-item-card:: Setting Up a Simulation
-      :link: making_a_simulation
+      :link: setting_up_a_simulation
       :link-type: doc
 
-      Create a ``Sim``, add particle components, and access them.
-
-   .. grid-item-card:: Generating Initial Conditions
-      :link: initial_conditions
-      :link-type: doc
-
-      Sample Plummer, King, and NFW profiles — or any galpy DF.
-
-   .. grid-item-card:: Adding External Forces and Potentials
-      :link: external_forces
-      :link-type: doc
-
-      Apply custom, analytic, or time-dependent external forces and potentials.
-
-   .. grid-item-card:: External Forces
+      Create a ``Sim``, adding particle components, generating equilibrium initial conditions, adding external forces.
 
    .. grid-item-card:: Running a Simulation
       :link: running_a_simulation
