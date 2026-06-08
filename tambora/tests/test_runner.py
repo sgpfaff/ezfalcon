@@ -348,7 +348,7 @@ class TestTimeStepInputs:
 # --- time-dependent external potential --------------------------------------------------------- #
 
 from galpy.potential import DehnenSmoothWrapperPotential
-from tambora.tambora.tools.util.units import KMS_TO_KPCGYR
+from tambora.tools.util.units import KMS_TO_KPCGYR
 
 def test_time_dependent_potential_matches_galpy():
     '''
@@ -453,7 +453,7 @@ def test_time_dependent_potential_differs_from_static():
         "Time is likely not being forwarded to the external force function."
     )
 
-from tambora.tambora.tools.util._galpy_bridge import _galpy_pot_to_pot_fn
+from tambora.tools.util._galpy_bridge import _galpy_pot_to_pot_fn
 
 def test_time_dependent_potential_energy_matches_galpy():
     '''
