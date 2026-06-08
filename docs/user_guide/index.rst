@@ -1,7 +1,7 @@
 User Guide
 ==========
 
-In-depth explanations of tambora's core concepts. Start with **Simulations**
+In-depth explanations of tambora's core concepts. Start with **All About Simulations**
 to build and run a simulation, dive into **Forces** for an understanding of how self-gravity and external forces are handled, or
 jump to **Tools & Interoperability** for everything around the edges.
 
@@ -9,7 +9,7 @@ jump to **Tools & Interoperability** for everything around the edges.
 All About Simulations
 --------------------
 
-.. grid:: 1 2 2 2
+.. grid:: 1 2 2 3
    :gutter: 2
 
    .. grid-item-card:: Setting Up a Simulation
@@ -24,28 +24,32 @@ All About Simulations
 
       Configure the integrator and launch a run.
 
-   .. grid-item-card:: Simulation Output Accessors
+   .. grid-item-card:: Simulation Accessors 
       :link: simulation_outputs
       :link-type: doc
 
       Access positions, velocities, energies, and diagnostics.
    
-   .. grid-item-card:: Including Multiple Sets of Particles
-      :link: including_multiple_sets_of_particles
-      :link-type: doc
-
-      Adding, simulating, and accessing multiple sets of particles in a simulation.
-
    .. grid-item-card:: Generating Initial Conditions
       :link: generating_initial_conditions
       :link-type: doc
+      :img-bottom: sampled_plummer_IC.png
 
       Generate equilibrium initial conditions for with tambora's built-in IC generation convenience functions.
+
+
+   .. grid-item-card:: Including Multiple Sets of Particles
+      :link: including_multiple_sets_of_particles
+      :link-type: doc
+      :img-bottom: multicomponent_IC.png
+
+      Adding, simulating, and accessing multiple sets of particles in a simulation.
+
 
 Forces
 ------
 
-.. grid:: 1 2 2 2
+.. grid:: 1 2 2 3
    :gutter: 2
 
    .. grid-item-card:: Types of Forces
@@ -70,7 +74,7 @@ Forces
 Tools & Interoperability
 ------------------------
 
-.. grid:: 1 2 2 2
+.. grid:: 1 2 2 3
    :gutter: 2
 
    .. grid-item-card:: Satellite Tools
@@ -96,3 +100,31 @@ Tools & Interoperability
 .. replace the old stub pages (simulation.rst / self_gravity.rst) that existed
 .. only to hold a nested toctree.
 
+.. toctree::
+   :hidden:
+   :caption: All About Simulations
+   :maxdepth: 1
+
+   setting_up_a_simulation
+   running_a_simulation
+   simulation_outputs
+   including_multiple_sets_of_particles
+   generating_initial_conditions
+
+.. toctree::
+   :hidden:
+   :caption: Forces
+   :maxdepth: 1
+
+   force_types
+   self_gravity_forces_and_solvers
+   external_conservative_forces_and_potentials
+
+.. toctree::
+   :hidden:
+   :caption: Tools & Interoperability
+   :maxdepth: 1
+
+   satellite_tools
+   interoperability
+   units

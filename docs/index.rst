@@ -4,7 +4,7 @@ tambora
 ========
 
 
-.. grid:: 1 2 2 3
+.. grid:: 1 2 2 2
    :gutter: 2
 
    .. grid-item-card:: Installation
@@ -29,20 +29,21 @@ tambora
    .. grid-item-card:: Examples
       :link: examples/index
       :link-type: doc
+      :img-bottom: examples/GC_stream_evolution.gif
 
       Notebooks covering tambora's features, from basics to
       science applications.
 
-   .. grid-item-card:: Diagnostics
-      :link: diagnostics/index
-      :link-type: doc
+   .. .. grid-item-card:: Diagnostics
+   ..    :link: diagnostics/index
+   ..    :link-type: doc
 
-      Convergence tests, scaling benchmarks, and energy conservation
-      validation.
+   ..    Convergence tests, scaling benchmarks, and energy conservation
+   ..    validation.
 
-   .. grid-item-card:: What's New
-      :link: changelog
-      :link-type: doc
+   .. .. grid-item-card:: What's New
+   ..    :link: changelog
+   ..    :link-type: doc
 
       Release notes and the changelog for each version of tambora.
 

@@ -68,7 +68,7 @@ exclude_patterns = [
     # Internal scratch notes — not a docs page (now that .md is a source suffix).
     "tests_and_docs_to_write.md",
     # All example notebooks — docs use .rst pages + _figures/ instead
-    "examples/*.ipynb",
+    "_examples/**", # archived examples
     "examples/EX1_Multicomponent_Shell.rst",
     "examples/EX2_Disk.rst",
     "examples/EX4_satellite_script.py",
@@ -125,6 +125,9 @@ html_theme_options = {
 html_sidebars = {
     "installation": [],
     "quickstart": [],
+    # The User Guide landing page navigates via its grid of cards; its primary
+    # sidebar would otherwise render as an empty "Section Navigation" box.
+    "user_guide/index": [],
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
