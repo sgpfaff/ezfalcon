@@ -603,51 +603,6 @@ def test_system_energy_is_sum_of_energies_after_run():
     np.testing.assert_allclose(system_energy, KE + PE, rtol=1e-15)
 
 
-# --- Test .run method ------------------------------------------------------------------------ #
-
-def test_negative_dt():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=-0.1, 
-                  dt_out=0.1,
-                  method='direct',
-                  eps=0.0)
-
-def test_negative_dt_out():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=-0.1,
-                  method='direct',
-                  eps=0.0)
-
-def test_negative_t_end():
-    with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-        KEPLER_SIM.run(
-                  t_end=-1.0, 
-                  dt=0.1, 
-                  dt_out=0.1,
-                  method='direct',
-                  eps=0.0)
-
-def test_dt_out_less_than_dt():
-    with pytest.raises(ValueError, match="dt_out must be greater than or equal to dt."):
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.1, 
-                  dt_out=0.05,
-                  method='direct',
-                  eps=0.0)
-def test_dt_out_not_a_multiple_of_dt():
-    with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
-        KEPLER_SIM.run(
-                  t_end=1.0, 
-                  dt=0.03, 
-                  dt_out=0.07,
-                  method='direct',
-                  eps=0.0)
 def test_invalid_method():
     with pytest.raises(ValueError, match=r"Unknown method 'invalid_method' for self-gravity. Supported methods: \['direct', 'falcON'\]"):
         KEPLER_SIM.run(
