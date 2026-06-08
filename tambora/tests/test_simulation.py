@@ -5,8 +5,8 @@ Test the Sim class and its methods.
 import pytest 
 from tambora.simulation import Sim, Component
 import numpy as np
-from tambora.tambora.tools.util import G_INTERNAL
-from tambora.tambora.tools.util.units import KMS_TO_KPCGYR
+from tambora.tools.util import G_INTERNAL
+from tambora.tools.util.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity
 import astropy.units as u
 

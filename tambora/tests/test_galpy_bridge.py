@@ -3,7 +3,7 @@ import warnings
 from galpy import potential
 from galpy.util.coords import rect_to_cyl, cyl_to_rect_vec
 import numpy as np
-from tambora.tambora.tools.util import _galpy_bridge
+from tambora.tools.util import _galpy_bridge
 from itertools import product
 from functools import partial
 import astropy.units as u
