@@ -7,7 +7,7 @@ jump to **Tools & Interoperability** for everything around the edges.
 
 
 All About Simulations
------------
+--------------------
 
 .. grid:: 1 2 2 2
    :gutter: 2
@@ -16,7 +16,7 @@ All About Simulations
       :link: setting_up_a_simulation
       :link-type: doc
 
-      Create a ``Sim``, adding particle components, generating equilibrium initial conditions, adding external forces.
+      Instantiating a simulation, adding particles and external forces, toggling self-gravity.
 
    .. grid-item-card:: Running a Simulation
       :link: running_a_simulation
@@ -29,7 +29,18 @@ All About Simulations
       :link-type: doc
 
       Access positions, velocities, energies, and diagnostics.
+   
+   .. grid-item-card:: Including Multiple Sets of Particles
+      :link: including_multiple_sets_of_particles
+      :link-type: doc
 
+      Adding, simulating, and accessing multiple sets of particles in a simulation.
+
+   .. grid-item-card:: Generating Initial Conditions
+      :link: generating_initial_conditions
+      :link-type: doc
+
+      Generate equilibrium initial conditions for with tambora's built-in IC generation convenience functions.
 
 Forces
 ------

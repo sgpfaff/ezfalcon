@@ -149,3 +149,5 @@ html_js_files = [
 autoclass_content = "both"
 
 # -- Other options ----------------------------------------------------------
+
+myst_heading_anchors = 3  # add anchors to all h1, h2, h3 headings for easy linking
