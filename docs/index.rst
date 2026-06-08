@@ -22,6 +22,7 @@ tambora
    .. grid-item-card:: User Guide
       :link: user_guide/index
       :link-type: doc
+      :img-bottom: user_guide/multicomponent_IC.png
 
       In-depth explanations of tambora's core concepts: units, self-gravity,
       external forces, and more.
