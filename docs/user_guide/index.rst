@@ -2,7 +2,7 @@ User Guide
 ==========
 
 In-depth explanations of tambora's core concepts. Start with **Simulations**
-to build and run a model, dive into **Self-Gravity** for the force solvers, or
+to build and run a simulation, dive into **Forces** for an understanding of how self-gravity and external forces are handled, or
 jump to **Tools & Interoperability** for everything around the edges.
 
 
@@ -24,7 +24,7 @@ All About Simulations
 
       Configure the integrator and launch a run.
 
-   .. grid-item-card:: Simulation Outputs
+   .. grid-item-card:: Simulation Output Accessors
       :link: simulation_outputs
       :link-type: doc
 
