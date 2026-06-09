@@ -80,7 +80,7 @@ Forces
    .. grid-item-card:: Self-Gravity Force Classes
       :link: self_gravity_force_and_solvers
       :link-type: doc
-      :img-bottom: tree_visualization.gif
+      :img-bottom: tree_visualization_v2.gif
 
       Compute self-gravity forces with falcON, direct summation, or Barnes-Hut. Per-component self-gravity.
       Softening lengths. Supported Methods
