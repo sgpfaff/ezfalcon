@@ -1,4 +1,4 @@
-from .MassIndependentConservForce import MassIndependentConservForce
+from .ExternalConservativeForce import ExternalConservativeForce
 import numpy as np
 from tambora.tools.util._galpy_bridge import (
                 _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
@@ -12,7 +12,7 @@ from tambora.tools.util.units import KMS_TO_KPCGYR
 from galpy.util.coords import rect_to_cyl
 from galpy import potential
 
-class LinearTideGalpyForce(MassIndependentConservForce):
+class LinearTideGalpyForce(ExternalConservativeForce):
     def __init__(self, pot, center=None):
         pot = _ensure_pot(pot)
         for p in _iter_components(pot):

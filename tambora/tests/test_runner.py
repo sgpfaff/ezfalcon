@@ -5,7 +5,7 @@ from tambora.dynamics.integration import _runner
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
 from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullBaseForce, NullSelfGravity
+from tambora.dynamics import ExternalGalpyPotential, DirectSummationGravity, NullExternalForce, NullSelfGravity
 from tambora.dynamics.forces.CompositeForce import _CompositeConservative
 from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
 from galpy.potential import NFWPotential
@@ -30,7 +30,7 @@ class TestOrbitIntegrationOutputShapes:
         vel_internal = (vel * u.km/u.s).to(u.kpc/u.Gyr).value
         mass = np.array([1., 1.])
         (cls.pos_out, cls.vel_out, cls.ts_out,
-        cls.self_acc_out, cls.self_pot_out)  = _runner(pos, vel_internal, mass, integrator, NullSelfGravity(), ext_force, NullBaseForce(),
+        cls.self_acc_out, cls.self_pot_out)  = _runner(pos, vel_internal, mass, integrator, NullSelfGravity(), ext_force, NullExternalForce(),
                                             0.0, t_end.value, dt.value, dt.value,
                                             return_self_gravity_pot=True, return_self_gravity_acc=True)
 
@@ -82,7 +82,7 @@ class TestReturnOptions:
         '''
         Test that we can return just the self-potential without the self-acceleration.
         '''
-        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
+        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullExternalForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=True, return_self_gravity_acc=False)
         assert out[-1].shape == (len(out[2]), self.mass.shape[0])
@@ -93,7 +93,7 @@ class TestReturnOptions:
         Test that we can return just the self-acceleration without the self-potential.
         '''
 
-        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
+        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullExternalForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                                         return_self_gravity_pot=False, return_self_gravity_acc=True)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
@@ -103,7 +103,7 @@ class TestReturnOptions:
         '''
         Test that we can return both the self-acceleration and self-potential.
         '''
-        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
+        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullExternalForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=True, return_self_gravity_acc=True)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
@@ -113,7 +113,7 @@ class TestReturnOptions:
         '''
         Test that we can return neither the self-acceleration nor self-potential.
         '''
-        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
+        out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullExternalForce(), 
                       0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=False, return_self_gravity_acc=False)
         assert out[-1] is None
@@ -151,7 +151,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                _CompositeConservative([]), NullExternalForce(), t0=0.0,
                 t_end=-1.0,
                 dt=-0.1,
                 dt_out=-0.1)
@@ -165,7 +165,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                _CompositeConservative([]), NullBaseForce(), t0=1.0,
+                _CompositeConservative([]), NullExternalForce(), t0=1.0,
                 t_end=2.0,
                 dt=0.1,
                 dt_out=0.1)
@@ -196,7 +196,7 @@ class TestTimeInputs:
         mass = np.ones(1)
         with pytest.warns(UserWarning, match="is not an exact multiple of dt=0.13 Gyr"):
             _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -211,7 +211,7 @@ class TestTimeInputs:
         mass = np.ones(1)
         with pytest.warns(UserWarning, match="Last output will be at t=0.8 Gyr instead of t=1.0 Gyr"):
             _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -230,7 +230,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -248,7 +248,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -265,7 +265,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -284,7 +284,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -302,7 +302,7 @@ class TestTimeInputs:
         mass = np.ones(1)
         with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
             _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                        _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                        _CompositeConservative([]), NullExternalForce(), t0=0.0,
                         t_end=t_end, 
                         dt=dt, 
                         dt_out=dt_out)
@@ -319,7 +319,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                    _CompositeConservative([]), NullExternalForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -343,7 +343,7 @@ class TestTimeStepInputs:
         '''
         Test that the output arrays have the correct shape when dt_out is a multiple of dt.
         '''
-        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
+        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullExternalForce(),
                                             0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
@@ -355,7 +355,7 @@ class TestTimeStepInputs:
         '''
         Test that the output arrays have the correct shape when dt_out is not a multiple of dt.
         '''
-        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
+        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullExternalForce(),
                                             0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
@@ -368,7 +368,7 @@ class TestTimeStepInputs:
         '''
         Test that the output arrays have the correct shape when dt_out is not a multiple of dt.
         '''
-        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
+        pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullExternalForce(),
                                             0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
@@ -408,7 +408,7 @@ def test_time_dependent_potential_matches_galpy():
     td_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_pot)
     td_pos_out, td_vel_out, td_ts_out, _, _ = _runner(
         td_pos, td_vel, np.array([1.0]),
-        integrator, NullSelfGravity(), td_force, NullBaseForce(),
+        integrator, NullSelfGravity(), td_force, NullExternalForce(),
         0.0, td_t_end.value, td_dt.value, td_dt.value, 
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
@@ -461,7 +461,7 @@ def test_time_dependent_potential_differs_from_static():
     #acc_growing = _galpy_pot_to_acc_fn(nfw_growing)
     pos_growing, _, _, _, _ = _runner(
         td2_pos.copy(), td2_vel.copy(), np.array([1.0]),
-        integrator, NullSelfGravity(), nfw_growing_force, NullBaseForce(),
+        integrator, NullSelfGravity(), nfw_growing_force, NullExternalForce(),
         0.0, td2_t_end.value, td2_dt.value, td2_dt.value,
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
@@ -472,7 +472,7 @@ def test_time_dependent_potential_differs_from_static():
     static_ext_force = _CompositeConservative([]) + ExternalGalpyPotential(nfw_static)
     pos_static, _, _, _, _ = _runner(
         td2_pos.copy(), td2_vel.copy(), np.array([1.0]),
-        integrator, NullSelfGravity(), static_ext_force, NullBaseForce(),
+        integrator, NullSelfGravity(), static_ext_force, NullExternalForce(),
         0.0, td2_t_end.value, td2_dt.value, td2_dt.value,
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
@@ -516,7 +516,7 @@ def test_time_dependent_potential_energy_matches_galpy():
     ext_force = _CompositeConservative([]) + ExternalGalpyPotential(smooth_e)
     e_pos_out, e_vel_out, e_ts_out, _, _ = _runner(
         e_pos, e_vel, np.array([1.0]),
-        integrator, NullSelfGravity(), ext_force, NullBaseForce(),
+        integrator, NullSelfGravity(), ext_force, NullExternalForce(),
         0.0, e_t_end.value, e_dt.value, e_dt_out.value, return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
     nsnaps, npart = e_pos_out.shape[:2]

@@ -1,3 +1,5 @@
+from .ExternalConservativeForce import ExternalConservativeForce
+
 try:
     from .ExternalGalpyPotential import ExternalGalpyPotential
     from .LinearTideGalpyForce import LinearTideGalpyForce

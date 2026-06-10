@@ -1,4 +1,4 @@
-from ..forces import SelfGravityForce, ConservativeForce, BaseForce
+from ..forces import SelfGravityForce, Conservative, Force
 from .BaseIntegrator import BaseIntegrator
 import numpy as np
 from tqdm import tqdm
@@ -9,8 +9,8 @@ import warnings
 def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, 
             integrator: BaseIntegrator, 
             self_gravity_force: Optional[SelfGravityForce], 
-            conserv_ext_force: Optional[ConservativeForce],
-            base_ext_force: Optional[BaseForce], t0: float,
+            conserv_ext_force: Optional[Conservative],
+            base_ext_force: Optional[Force], t0: float,
             t_end: float, dt: float, dt_out: float, 
             return_self_gravity_pot: bool = True, 
             return_self_gravity_acc: bool = True):
@@ -30,9 +30,9 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Integrator class to use, inherited from BaseIntegrator.
     self_gravity_force : SelfGravity
         self-gravity solver class.
-    conserv_ext_forces: ConservativeForce
+    conserv_ext_forces: Conservative
         Conservative external forces.
-    base_ext_forces : BaseForce
+    base_ext_forces : Force
         Non-conservative external forces.
     t0 : float
         Start time of integration. Default is 0.0 Gyr.

@@ -1,4 +1,4 @@
-from .MassIndependentConservForce import MassIndependentConservForce
+from .ExternalConservativeForce import ExternalConservativeForce
 import galpy
 from ....tools.util._galpy_bridge import (
                 _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn,
@@ -7,7 +7,7 @@ from ....tools.util._galpy_bridge import (
             )
 import numpy as np
 
-class ExternalGalpyPotential(MassIndependentConservForce):
+class ExternalGalpyPotential(ExternalConservativeForce):
     """Wrap a galpy ``Potential`` as an :class:`ExternalForce`.
 
     Conservative (has a potential) and not C-backed. Combine with other

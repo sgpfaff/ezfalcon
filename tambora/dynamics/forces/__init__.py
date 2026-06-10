@@ -1,4 +1,4 @@
 from .self_gravity import *
 from .external_force import *
-from .BaseForce import BaseForce, NullBaseForce
-from .ConservativeForce import ConservativeForce
+from .Force import Force, ExternalForce, InteractionForce, NullExternalForce
+from .Conservative import Conservative

@@ -1,6 +1,6 @@
 from typing import Optional
-from ..forces.BaseForce import BaseForce
-from ..forces.ConservativeForce import ConservativeForce
+from ..forces.Force import Force
+from ..forces.Conservative import Conservative
 from ..forces.self_gravity import SelfGravityForce
 from .BaseIntegrator import BaseIntegrator, StepResult
 import dataclasses
@@ -19,8 +19,8 @@ class LeapfrogIntegrator(BaseIntegrator):
         t: float,
         dt: float,
         self_gravity_force: SelfGravityForce,
-        conserv_ext_force: ConservativeForce,
-        base_ext_force: BaseForce
+        conserv_ext_force: Conservative,
+        base_ext_force: Force
     ) -> StepResult:
         
         # --- base force half-kick -------------------------------------------------------
