@@ -31,7 +31,7 @@ class TestOrbitIntegrationOutputShapes:
         mass = np.array([1., 1.])
         (cls.pos_out, cls.vel_out, cls.ts_out,
         cls.self_acc_out, cls.self_pot_out)  = _runner(pos, vel_internal, mass, integrator, NullSelfGravity(), ext_force, NullBaseForce(),
-                                            t_end.value, dt.value, dt.value,
+                                            0.0, t_end.value, dt.value, dt.value,
                                             return_self_gravity_pot=True, return_self_gravity_acc=True)
 
     def test_integrate_multiple_orbits_output_pos_shape(self):
@@ -83,7 +83,7 @@ class TestReturnOptions:
         Test that we can return just the self-potential without the self-acceleration.
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
-                      self.t_end.value, self.dt.value*10, self.dt.value*10,
+                      0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=True, return_self_gravity_acc=False)
         assert out[-1].shape == (len(out[2]), self.mass.shape[0])
         assert out[-2] is None
@@ -94,7 +94,7 @@ class TestReturnOptions:
         '''
 
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
-                      self.t_end.value, self.dt.value*10, self.dt.value*10,
+                      0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                                         return_self_gravity_pot=False, return_self_gravity_acc=True)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
         assert out[-1] is None
@@ -104,7 +104,7 @@ class TestReturnOptions:
         Test that we can return both the self-acceleration and self-potential.
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
-                      self.t_end.value, self.dt.value*10, self.dt.value*10,
+                      0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=True, return_self_gravity_acc=True)
         assert out[-2].shape == (len(out[2]), self.mass.shape[0], 3)
         assert out[-1].shape == (len(out[2]), self.mass.shape[0])
@@ -114,43 +114,75 @@ class TestReturnOptions:
         Test that we can return neither the self-acceleration nor self-potential.
         '''
         out = _runner(self.pos, self.vel_internal, self.mass, self.integrator, self.self_gravity, self.ext_force, NullBaseForce(), 
-                      self.t_end.value, self.dt.value*10, self.dt.value*10,
+                      0.0, self.t_end.value, self.dt.value*10, self.dt.value*10,
                       return_self_gravity_pot=False, return_self_gravity_acc=False)
         assert out[-1] is None
         assert out[-2] is None
 
 class TestTimeInputs:
-    def test_negative_dt(self):
-        with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-            _runner(*[None]*7,
-                    t_end=1.0, 
-                    dt=-0.1, 
-                    dt_out=0.1)
-            
-    def test_negative_dt_out(self):
-        with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-            _runner(*[None]*7,
-                    t_end=1.0, 
-                    dt=-0.1, 
+    def test_forward_with_negative_dt_raises(self):
+        # Forward span (t0 < t_end) requires a positive dt.
+        with pytest.raises(ValueError, match="dt must be positive for forwards integration"):
+            _runner(*[None]*7, t0=0.0,
+                    t_end=1.0,
+                    dt=-0.1,
                     dt_out=-0.1)
 
-    def test_negative_t_end(self):
-        with pytest.raises(ValueError, match="dt, dt_out, and t_end must be positive."):
-            _runner(*[None]*7,
-                    t_end=-1.0, 
-                    dt=-0.1, 
+    def test_backward_with_positive_dt_raises(self):
+        # Backward span (t0 > t_end) requires a negative dt.
+        with pytest.raises(ValueError, match="dt must be negative for backwards integration"):
+            _runner(*[None]*7, t0=1.0,
+                    t_end=0.0,
+                    dt=0.1,
                     dt_out=0.1)
 
+    def test_dt_out_opposite_sign_to_dt_raises(self):
+        # dt_out must share dt's sign (valid forward dt here, but a negative dt_out).
+        with pytest.raises(ValueError, match="dt_out must have the same sign as dt"):
+            _runner(*[None]*7, t0=0.0,
+                    t_end=1.0,
+                    dt=0.1,
+                    dt_out=-0.1)
+
+    def test_backward_integration_outputs_descending_times(self):
+        # A consistent backward run (negative dt and dt_out) is accepted and
+        # produces snapshot times running from t0 down to t_end.
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                _CompositeConservative([]), NullBaseForce(), t0=0.0,
+                t_end=-1.0,
+                dt=-0.1,
+                dt_out=-0.1)
+        np.testing.assert_allclose(ts_out[0], 0.0)
+        np.testing.assert_allclose(ts_out[-1], -1.0)
+        assert ts_out.shape == (11,)
+
+    def test_nonzero_t0_offsets_output_times(self):
+        # t0 shifts the snapshot times: a run over [t0, t_end] starts at t0, ends at t_end.
+        pos = np.zeros((1, 3))
+        vel = np.zeros((1, 3))
+        mass = np.ones(1)
+        _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
+                _CompositeConservative([]), NullBaseForce(), t0=1.0,
+                t_end=2.0,
+                dt=0.1,
+                dt_out=0.1)
+        np.testing.assert_allclose(ts_out[0], 1.0)
+        np.testing.assert_allclose(ts_out[-1], 2.0)
+        assert ts_out.shape == (11,)
+
     def test_dt_out_less_than_dt(self):
-        with pytest.raises(ValueError, match="dt_out must be greater than or equal to dt."):
-            _runner(*[None]*7,
+        with pytest.raises(ValueError, match="absolute value of dt_out must be greater than or equal to dt"):
+            _runner(*[None]*7, t0=0.0,
                     t_end=1.0, 
                     dt=0.1, 
                     dt_out=0.05)
             
     def test_dt_out_not_a_multiple_of_dt_fails(self):
         with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
-            _runner(*[None]*7,
+            _runner(*[None]*7, t0=0.0,
                     t_end=1.0, 
                     dt=0.1, 
                     dt_out=0.13)
@@ -162,9 +194,9 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        with pytest.warns(UserWarning, match="t_end=1.0 Gyr is not an exact multiple of dt=0.13 Gyr. The simulation will end before t_end."):
+        with pytest.warns(UserWarning, match="is not an exact multiple of dt=0.13 Gyr"):
             _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -177,10 +209,9 @@ class TestTimeInputs:
         pos = np.zeros((1, 3))
         vel = np.zeros((1, 3))
         mass = np.ones(1)
-        with pytest.warns(UserWarning, match="t_end=1.0 Gyr is not an exact multiple of dt_out=0.4 Gyr. "
-                        "Last output will be at t=0.8 Gyr instead of t=1.0 Gyr."):
+        with pytest.warns(UserWarning, match="Last output will be at t=0.8 Gyr instead of t=1.0 Gyr"):
             _, _, ts_out, _, _ = _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -199,7 +230,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -217,7 +248,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -234,7 +265,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -253,7 +284,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -271,7 +302,7 @@ class TestTimeInputs:
         mass = np.ones(1)
         with pytest.raises(ValueError, match="dt_out must be a multiple of dt."):
             _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                        _CompositeConservative([]), NullBaseForce(),
+                        _CompositeConservative([]), NullBaseForce(), t0=0.0,
                         t_end=t_end, 
                         dt=dt, 
                         dt_out=dt_out)
@@ -288,7 +319,7 @@ class TestTimeInputs:
         vel = np.zeros((1, 3))
         mass = np.ones(1)
         _runner(pos, vel, mass, LeapfrogIntegrator(), NullSelfGravity(),
-                    _CompositeConservative([]), NullBaseForce(),
+                    _CompositeConservative([]), NullBaseForce(), t0=0.0,
                     t_end=t_end, 
                     dt=dt, 
                     dt_out=dt_out)
@@ -313,7 +344,7 @@ class TestTimeStepInputs:
         Test that the output arrays have the correct shape when dt_out is a multiple of dt.
         '''
         pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
-                                            t_end, dt, dt_out,
+                                            0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
         assert ts_out.shape == (expected_num_outputs,)
@@ -325,7 +356,7 @@ class TestTimeStepInputs:
         Test that the output arrays have the correct shape when dt_out is not a multiple of dt.
         '''
         pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
-                                            t_end, dt, dt_out,
+                                            0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
         assert ts_out.shape == (expected_num_outputs,)
@@ -338,7 +369,7 @@ class TestTimeStepInputs:
         Test that the output arrays have the correct shape when dt_out is not a multiple of dt.
         '''
         pos_out, vel_out, ts_out, _, _ = _runner(self.pos, self.vel, np.array([1.]), self.integrator, NullSelfGravity(), self.ext_force, NullBaseForce(),
-                                            t_end, dt, dt_out,
+                                            0.0, t_end, dt, dt_out,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         expected_num_outputs = int(t_end / dt_out) + 1
         assert ts_out.shape == (expected_num_outputs,)
@@ -378,7 +409,7 @@ def test_time_dependent_potential_matches_galpy():
     td_pos_out, td_vel_out, td_ts_out, _, _ = _runner(
         td_pos, td_vel, np.array([1.0]),
         integrator, NullSelfGravity(), td_force, NullBaseForce(),
-        td_t_end.value, td_dt.value, td_dt.value, 
+        0.0, td_t_end.value, td_dt.value, td_dt.value, 
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
 
@@ -431,7 +462,7 @@ def test_time_dependent_potential_differs_from_static():
     pos_growing, _, _, _, _ = _runner(
         td2_pos.copy(), td2_vel.copy(), np.array([1.0]),
         integrator, NullSelfGravity(), nfw_growing_force, NullBaseForce(),
-        td2_t_end.value, td2_dt.value, td2_dt.value,
+        0.0, td2_t_end.value, td2_dt.value, td2_dt.value,
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
 
@@ -442,7 +473,7 @@ def test_time_dependent_potential_differs_from_static():
     pos_static, _, _, _, _ = _runner(
         td2_pos.copy(), td2_vel.copy(), np.array([1.0]),
         integrator, NullSelfGravity(), static_ext_force, NullBaseForce(),
-        td2_t_end.value, td2_dt.value, td2_dt.value,
+        0.0, td2_t_end.value, td2_dt.value, td2_dt.value,
         return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
 
@@ -486,7 +517,7 @@ def test_time_dependent_potential_energy_matches_galpy():
     e_pos_out, e_vel_out, e_ts_out, _, _ = _runner(
         e_pos, e_vel, np.array([1.0]),
         integrator, NullSelfGravity(), ext_force, NullBaseForce(),
-        e_t_end.value, e_dt.value, e_dt_out.value, return_self_gravity_pot=False, return_self_gravity_acc=False,
+        0.0, e_t_end.value, e_dt.value, e_dt_out.value, return_self_gravity_pot=False, return_self_gravity_acc=False,
     )
     nsnaps, npart = e_pos_out.shape[:2]
     ez_KE = 0.5 * np.sum(e_vel_out ** 2, axis=-1).squeeze()         # (nsnaps,)

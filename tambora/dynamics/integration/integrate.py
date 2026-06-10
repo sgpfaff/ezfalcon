@@ -10,7 +10,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             integrator: BaseIntegrator, 
             self_gravity_force: Optional[SelfGravityForce], 
             conserv_ext_force: Optional[ConservativeForce],
-            base_ext_force: Optional[BaseForce],
+            base_ext_force: Optional[BaseForce], t0: float,
             t_end: float, dt: float, dt_out: float, 
             return_self_gravity_pot: bool = True, 
             return_self_gravity_acc: bool = True):
@@ -34,6 +34,9 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Conservative external forces.
     base_ext_forces : BaseForce
         Non-conservative external forces.
+    t0 : float
+        Start time of integration. Default is 0.0 Gyr.
+        Units: `Gyr`
     t_end : float
         End time of integration.
         Units: `Gyr`
@@ -70,17 +73,17 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Returns None if return_self_potential is False.
         Units: `kpc^2 / Myr^2`
     '''
-    _check_dt_dt_out(dt, dt_out, t_end)
+    _check_dt_dt_out(dt, dt_out, t0, t_end)
 
     (ts_out, ts_integrate, 
-    nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t_end)
+    nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t0, t_end)
 
     positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
     self_gravity_pot, self_gravity_acc = _make_self_gravity_arrays(pos, mass, self_gravity_force, 
                                                                    return_self_gravity_pot, return_self_gravity_acc, nsnaps)
     i_out = 1
     current_pos, current_vel = pos, vel
-    current_t = 0
+    current_t = t0
     integrator.reset()
     for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
@@ -98,36 +101,42 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
 
 
-def _check_dt_dt_out(dt, dt_out, t_end):
-    if dt <= 0 or dt_out <= 0 or t_end <= 0:
-        raise ValueError("dt, dt_out, and t_end must be positive.")
-    if dt_out < dt:
-        raise ValueError("dt_out must be greater than or equal to dt.")
+def _check_dt_dt_out(dt, dt_out, t0, t_end):
+    if (t0 > t_end) and (dt > 0):
+        raise ValueError("The end time (t_end) is less than the start time (t0), implying backwards integration. " \
+        "dt must be negative for backwards integration.")
+    elif (t0 < t_end) and (dt < 0):
+        raise ValueError("The end time (t_end) is greater than the start time (t0), implying forwards integration. " \
+        "dt must be positive for forwards integration.")
+    if np.abs(dt_out) < np.abs(dt):
+        raise ValueError("The absolute value of dt_out must be greater than or equal to dt.")
+    if np.sign(dt_out) != np.sign(dt):
+        raise ValueError("dt_out must have the same sign as dt.")
     if abs(dt_out / dt - round(dt_out / dt)) > 1e-9:
         raise ValueError("dt_out must be a multiple of dt.")
-    if abs(t_end / dt - round(t_end / dt)) > 1e-9:
-        actual_t_end = int(t_end / dt) * dt
-        warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt={dt} Gyr. "
-                        f"The simulation will end before t_end.")
-    if abs(t_end / dt_out - round(t_end / dt_out)) > 1e-9:
-        n_steps_w = int(t_end / dt) if abs(t_end / dt - round(t_end / dt)) > 1e-9 else round(t_end / dt)
+    if abs((t_end - t0) / dt - round((t_end  - t0) / dt)) > 1e-9:
+        actual_t_end = int((t_end - t0) / dt) * dt + t0
+        warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt={dt} Gyr. "
+                        f"The simulation will end before t_end it reaches t_end.")
+    if abs((t_end - t0) / dt_out - round((t_end - t0) / dt_out)) > 1e-9:
+        n_steps_w = int((t_end - t0) / dt) if abs((t_end - t0)/ dt - round((t_end - t0) / dt)) > 1e-9 else round((t_end - t0) / dt)
         steps_per_output = round(dt_out / dt)
         nsnaps = n_steps_w // steps_per_output
-        actual_t_end = nsnaps * dt_out
-        warnings.warn(f"t_end={t_end} Gyr is not an exact multiple of dt_out={dt_out} Gyr. "
+        actual_t_end = nsnaps * dt_out + t0
+        warnings.warn(f"Simulation duration ({t_end - t0} Gyr) is not an exact multiple of dt_out={dt_out} Gyr. "
                         f"Last output will be at t={actual_t_end:.10g} Gyr instead of t={t_end} Gyr.")
 
-def _make_time_arrays(dt, dt_out, t_end):
-    ratio_save = t_end / dt_out
+def _make_time_arrays(dt, dt_out, t0, t_end):
+    ratio_save = (t_end - t0) / dt_out
     n_steps_save = round(ratio_save) if abs(ratio_save - round(ratio_save)) < 1e-9 else int(ratio_save)
 
-    ratio_integrate = t_end / dt
+    ratio_integrate = (t_end - t0) / dt
     n_steps_integrate = round(ratio_integrate) if abs(ratio_integrate - round(ratio_integrate)) < 1e-9 else int(ratio_integrate)
 
     steps_per_output = round(dt_out / dt)
     nsnaps = n_steps_save + 1  # +1 for initial snapshot at t=0
-    ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out
-    ts_integrate = np.arange(n_steps_integrate + 1, dtype=np.float64) * dt
+    ts_out = np.arange(nsnaps, dtype=np.float64) * dt_out + t0
+    ts_integrate = np.arange(n_steps_integrate + 1, dtype=np.float64) * dt + t0
     return ts_out, ts_integrate, nsnaps, steps_per_output
 
 

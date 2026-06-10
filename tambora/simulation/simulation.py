@@ -318,7 +318,7 @@ class Sim:
         
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
-    def run(self, t_end: float, dt: float, dt_out: float, 
+    def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
             method: Optional[str] = 'auto', integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True, 
             **kwargs):
@@ -396,6 +396,7 @@ class Sim:
                     self._self_gravity_force,
                     self._conserv_ext_force,
                     self._base_ext_force,
+                    t0 = t0,
                     t_end = t_end,
                     dt = dt,
                     dt_out = dt_out,

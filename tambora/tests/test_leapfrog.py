@@ -1,14 +1,3 @@
-from tambora.dynamics.integration import _runner
-from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
-from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
-from tambora.simulation import Sim
-from tambora.dynamics import ExternalGalpyPotential
-from tambora.dynamics.integration.LeapfrogIntegrator import LeapfrogIntegrator
-from galpy.potential import NFWPotential
-from galpy.orbit import Orbit
-import astropy.units as u
-import numpy as np
-
 import pytest
 import numpy as np
 
@@ -38,7 +27,7 @@ class TestOrbitConservationLaws:
         vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Gyr).value])
         ext_force = _CompositeConservative([]) + ExternalGalpyPotential(pot)
         pos_out, vel_out, cls.ts_out, _, _ = _runner(pos, vel, np.array([1.]), integrator, NullSelfGravity(), ext_force, NullBaseForce(),
-                                            t_end.value, dt.value, dt.value,
+                                            0.0, t_end.value, dt.value, dt.value,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
         nsnaps, npart = vel_out.shape[:2]
         KE = 0.5 * np.sum(vel_out**2, axis=-1)  # (nsnaps, N)
@@ -77,7 +66,7 @@ class TestOrbitIntegrationAgainstGalpy:
         vel = np.array([(cyl_to_rect_vec(vR, vT, vz, phi) * u.km/u.s).to(u.kpc/u.Gyr).value])
         ext_force = _CompositeConservative([]) + ExternalGalpyPotential(pot)
         cls.pos_out, cls.vel_out, cls.ts_out, _, _ = _runner(pos, vel, np.array([1.]), integrator, NullSelfGravity(), ext_force, NullBaseForce(),
-                                            t_end.value, dt.value, dt.value,
+                                            0.0, t_end.value, dt.value, dt.value,
                                             return_self_gravity_pot=False, return_self_gravity_acc=False)
 
         cls.o_galpy = Orbit([R*u.kpc, vR*u.km/u.s, vT*u.km/u.s, z*u.kpc, vz*u.km/u.s, phi*u.rad])

@@ -11,7 +11,7 @@
 
 
 ## Installation
-<b><span style="color:red">Please note that this code is under rapid development and backwards compatility is currently not guarenteed.</span></b>
+🚧🚨 **Warning!** 🚧🚨 [tambora](https://tambora.readthedocs.io/en/latest/) is still under development. Backwards compatibility is currently not guaranteed.
 
 
 ### Basic Installation
