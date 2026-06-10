@@ -795,7 +795,6 @@ def test_iac_self_potential_analytical_two_body():
     result_own = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result_own, expected_own, rtol=1e-15)
 
-
 # --- use_cached x include_all_components interaction --------------------------- #
 
 def test_iac_default_uses_cache_when_include_all():
