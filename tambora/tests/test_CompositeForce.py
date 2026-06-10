@@ -7,15 +7,15 @@ class ExampleBaseForce(BaseForce):
     def __init__(self, multiplier):
         self.multiplier = multiplier
     def acc(self, pos, vel, mass, t):
-        return 2 * pos * vel * self.multiplier
+        return 2 * pos * vel * self.multiplier + np.sum(mass) + t
 
 class ExampleConservativeForce(ConservativeForce):
     def __init__(self, multiplier):
         self.multiplier = multiplier
     def acc(self, pos, mass, t):
-        return 2 * pos * self.multiplier
+        return 2 * pos * self.multiplier + np.sum(mass) + t
     def potential(self, pos, mass, t):
-        return np.sum(pos**2) * self.multiplier
+        return np.sum(pos**2) * self.multiplier + np.sum(mass) + t
 
 # --- Composite of BaseForces ------------------------------------------------------ #
 
@@ -58,7 +58,7 @@ def test_composite_of_base_forces_equals_analytic():
     vel = np.array([0.5, 0.5, 0.5])
     mass = np.array([1.0, 1.0, 1.0])
     t = 0.0
-    expected_acc = 2 * pos * vel * (baseForce1.multiplier + baseForce2.multiplier)
+    expected_acc = 2 * pos * vel * (baseForce1.multiplier + baseForce2.multiplier) + 2*np.sum(mass) + 2*t
     assert np.allclose(composite.acc(pos, vel, mass, t), expected_acc)
 
 # --- Composite of ConservativeForces ------------------------------------------------------ #
@@ -86,7 +86,7 @@ def test_composite_of_conservative_forces_equals_analytic():
     pos = np.array([1.0, 2.0, 3.0])
     mass = np.array([1.0, 1.0, 1.0])
     t = 0.0
-    expected_acc = 2 * pos * (conservativeForce1.multiplier + conservativeForce2.multiplier)
+    expected_acc = 2 * pos * (conservativeForce1.multiplier + conservativeForce2.multiplier) + 2*np.sum(mass) + 2*t
     assert np.allclose(composite.acc(pos, mass, t), expected_acc)
 
 def test_composite_potential_equals_sum_of_potentials():
@@ -126,5 +126,5 @@ def test_composite_of_mixed_forces_equals_analytic():
     vel = np.array([0.5, 0.5, 0.5])
     mass = np.array([1.0, 1.0, 1.0])
     t = 0.0
-    expected_acc = 2 * pos * (baseForce1.multiplier * vel + conservativeForce1.multiplier)
+    expected_acc = 2 * pos * (baseForce1.multiplier * vel + conservativeForce1.multiplier) + 2*np.sum(mass) + 2*t
     assert np.allclose(composite.acc(pos, vel, mass, t), expected_acc)

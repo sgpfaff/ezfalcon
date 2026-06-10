@@ -370,6 +370,7 @@ def test_resolve_eps_invalid_type():
         sim.run(t_end=0.1, dt=0.1, dt_out=0.1, method='direct', eps=[0.1, 0.2])
 
 # --- .add_external_force() ---------------------------------------------------------------------- #
+
 def test_add_external_force_rejects_non_force():
     class Test:
         ...
@@ -383,6 +384,94 @@ def test_add_external_force_rejects_self_gravity():
     force = DirectSummationGravity(eps=0.1)
     with pytest.raises(TypeError, match="The provided force is a self-gravity force, not an external force."):
         sim.add_external_force(force)
+
+from tambora.dynamics import BaseForce
+from tambora.tools.util import KMS_TO_KPCGYR
+class CustomBaseForce(BaseForce):
+    def __init__(self):
+        ...
+    def acc(self, pos, vel, mass, t):
+        return np.sum(mass) * (pos + vel) + t
+    def _eval_acc(self, pos, vel, mass, t):
+        return self.acc(pos, vel, mass, t)
+    
+def test_add_external_force_adds_BaseForce_to_base_ext_force():
+    sim = Sim()
+    ex_custom_base_force = CustomBaseForce()
+    sim.add_external_force(ex_custom_base_force)
+    assert ex_custom_base_force in sim._base_ext_force.members
+    
+def test_external_BaseForce_contributes_to_acc():
+    sim = Sim()
+    ex_custom_base_force = CustomBaseForce()
+    sim.add_external_force(ex_custom_base_force)
+    pos=np.random.normal(size=(100, 3))
+    vel=np.random.normal(size=(100, 3))
+    mass=np.random.normal(size=(100,))
+    t=0.0
+    sim.add_particles(name='test',
+                      pos=pos, 
+                      vel=vel,
+                      mass=mass)
+    ground_truth_acc = ex_custom_base_force.acc(pos, vel*KMS_TO_KPCGYR, mass, t)
+    np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
+
+from tambora.dynamics import ConservativeForce
+class CustomConservForce(ConservativeForce):
+    def __init__(self):
+        ...
+    def acc(self, pos, mass, t):
+        return np.sum(mass) * pos + t
+    def potential(self, pos, mass, t):
+        return np.sum(mass**2) * np.linalg.norm(pos, axis=1)**2 + t**2
+    def _eval_acc(self, pos, vel, mass, t):
+        return self.acc(pos, mass, t)
+    
+def test_add_external_force_adds_ConservativeForce_to_conserv_ext_force():
+    sim = Sim()
+    ex_custom_conserv_force = CustomConservForce()
+    sim.add_external_force(ex_custom_conserv_force)
+    assert ex_custom_conserv_force in sim._conserv_ext_force.members
+    
+def test_external_ConservativeForce_contributes_to_acc():
+    sim = Sim()
+    ex_custom_conserv_force = CustomConservForce()
+    sim.add_external_force(ex_custom_conserv_force)
+    pos=np.random.normal(size=(100, 3))
+    vel=np.random.normal(size=(100, 3))
+    mass=np.random.normal(size=(100,))
+    t=0.0
+    sim.add_particles(name='test',
+                      pos=pos, 
+                      vel=vel,
+                      mass=mass)
+    ground_truth_acc = ex_custom_conserv_force.acc(pos, mass, t)
+    np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
+
+def test_external_ConservativeForce_contributes_to_potential():
+    sim = Sim()
+    ex_custom_conserv_force = CustomConservForce()
+    sim.add_external_force(ex_custom_conserv_force)
+    pos=np.random.normal(size=(100, 3))
+    vel=np.random.normal(size=(100, 3))
+    mass=np.random.normal(size=(100,))
+    t=0.0
+    sim.add_particles(name='test',
+                      pos=pos, 
+                      vel=vel,
+                      mass=mass)
+    
+    ground_truth_pot = ex_custom_conserv_force.potential(pos, mass, t) * mass
+    np.testing.assert_allclose(sim.compute_external_pot(t=t, return_internal=True), ground_truth_pot)
+
+def test_add_external_force_assigns_mixed_composite_correctly():
+    ex_custom_base_force = CustomBaseForce()
+    ex_custom_conserv_force = CustomConservForce()
+    ex_composite_force = ex_custom_base_force + ex_custom_conserv_force
+    sim = Sim()
+    sim.add_external_force(ex_composite_force)
+    assert ex_custom_conserv_force in sim._conserv_ext_force.members
+    assert ex_custom_base_force in sim._base_ext_force.members
 
 # --- .add_external_pot() ------------------------------------------------------------------------ #
 

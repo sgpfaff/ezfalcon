@@ -4,8 +4,7 @@ Simulation class for tambora.
 
 import numpy as np
 from .component import Component
-from ..dynamics import (_runner, self_gravity, BaseForce, SelfGravityForce, NullSelfGravity,
-                        ConservativeForce, ExternalGalpyPotential, 
+from ..dynamics import (_runner, self_gravity, BaseForce, SelfGravityForce, NullSelfGravity, ConservativeForce, ExternalGalpyPotential, 
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -194,18 +193,24 @@ class Sim:
             If force is an instance of SelfGravity. Only accepts external
             forces.
         '''
-        if isinstance(force, SelfGravityForce):
-            raise TypeError("The provided force is a self-gravity force, not an external force. Please provide a ConservativeForce or BaseForce subclass.")
-        elif isinstance(force, ConservativeForce):
-            self._conserv_ext_force = self._conserv_ext_force  + force
-        elif isinstance(force, BaseForce):
-            self._base_ext_forces = self._base_ext_forces + force
+        def _assign_force(_force):
+            if isinstance(_force, SelfGravityForce):
+                raise TypeError("The provided force is a self-gravity force, not an external force. Please provide a ConservativeForce or BaseForce subclass.")
+            elif isinstance(_force, ConservativeForce):
+                self._conserv_ext_force = self._conserv_ext_force  + force
+            elif isinstance(_force, BaseForce):
+                self._base_ext_force = self._base_ext_force + force
+            else:
+                raise TypeError(
+                    f"Expected a ConservativeForce or BaseForce subclass, "
+                    f"got {type(force).__name__!r}."
+                )
+        if isinstance(force, _CompositeConservative) or isinstance(force, _CompositePlain):
+            for _force in force.members:
+                _assign_force(_force)
         else:
-            raise TypeError(
-                f"Expected a ConservativeForce or BaseForce subclass, "
-                f"got {type(force).__name__!r}."
-            )
-        
+            _assign_force(force)
+            
     def add_external_pot(self, potential):
         '''
         Add an external potential to the simulation.
