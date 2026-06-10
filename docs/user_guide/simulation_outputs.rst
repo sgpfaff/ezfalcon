@@ -1,5 +1,5 @@
-Simulation Outputs
-==================
+Simulation Accessors
+====================
 
 Accessing Snapshots
 -------------------

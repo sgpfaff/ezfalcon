@@ -38,10 +38,24 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx_automodapi.automodapi",
     "sphinx_automodapi.smart_resolver",
-    "nbsphinx",
+    "myst_nb",
     "sphinx_design",
     "sphinx_copybutton",
 ]
+
+# -- MyST / MyST-NB ----------------------------------------------------------
+# myst_nb activates myst_parser; do NOT also list "myst_parser" above.
+myst_enable_extensions = [
+    "dollarmath",   # $...$ / $$...$$ math (used in the user guide)
+    "colon_fence",  # ::: fences as an alternative to ```{directive}
+]
+
+# Notebooks are never executed at build time. The User Guide pages are .ipynb
+# notebooks committed *with their outputs* (re-run them locally whenever you
+# want to refresh the docs), and the Examples render committed outputs too, so
+# the build just renders what's stored. This keeps RTD builds fast and means
+# the build needs no science dependencies to run cells.
+nb_execution_mode = "off"
 
 # Add any paths that contain templates here, relative to this directory.
 # templates_path = ["_templates"]
@@ -51,8 +65,10 @@ extensions = [
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
     "_build", "Thumbs.db", ".DS_Store",
+    # Internal scratch notes — not a docs page (now that .md is a source suffix).
+    "tests_and_docs_to_write.md",
     # All example notebooks — docs use .rst pages + _figures/ instead
-    "examples/*.ipynb",
+    "_examples/**", # archived examples
     "examples/EX1_Multicomponent_Shell.rst",
     "examples/EX2_Disk.rst",
     "examples/EX4_satellite_script.py",
@@ -61,9 +77,13 @@ exclude_patterns = [
 ]
 
 # The suffix(es) of source filenames.
-# nbsphinx automatically registers .ipynb — do NOT list it here
-# or it gets associated with the RST parser instead of NotebookParser.
-source_suffix = ['.rst']
+# myst_nb parses .md (MyST Markdown, incl. text-based notebooks with
+# {code-cell} blocks) and .ipynb; .rst stays on the reStructuredText parser.
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "myst-nb",
+    ".ipynb": "myst-nb",
+}
 
 # The master toctree document.
 master_doc = "index"
@@ -90,6 +110,24 @@ html_theme_options = {
             "icon": "fa-brands fa-github",
         },
     ],
+    # Navbar carries the top-level sections; the left sidebar shows only the
+    # pages *within* the current section (show_nav_level=1) so the two don't
+    # duplicate each other.
+    "navbar_align": "left",
+    "show_nav_level": 1,
+    "navigation_depth": 2,
+    "collapse_navigation": False,
+    "show_toc_level": 2,
+}
+
+# Single-page sections have nothing to put in a left sidebar (it would just
+# echo the navbar), so drop it for a cleaner, wider layout there.
+html_sidebars = {
+    "installation": [],
+    "quickstart": [],
+    # The User Guide landing page navigates via its grid of cards; its primary
+    # sidebar would otherwise render as an empty "Section Navigation" box.
+    "user_guide/index": [],
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -97,13 +135,9 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 # html_static_path = ["_static"]
 
-# -- Options for nbsphinx ----------------------------------------------------
-
-nbsphinx_execute = "never"
-
 # Plotly requires its JS bundle to render application/vnd.plotly.v1+json outputs.
 # The CDN bundle is injected into every page so interactive Plotly charts in
-# executed notebooks work without needing requirejs.
+# notebooks work without needing requirejs.
 html_js_files = [
     "https://cdn.plot.ly/plotly-2.35.2.min.js",
 ]
@@ -118,3 +152,5 @@ html_js_files = [
 autoclass_content = "both"
 
 # -- Other options ----------------------------------------------------------
+
+myst_heading_anchors = 3  # add anchors to all h1, h2, h3 headings for easy linking

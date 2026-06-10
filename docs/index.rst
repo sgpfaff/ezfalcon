@@ -4,7 +4,7 @@ tambora
 ========
 
 
-.. grid:: 1 2 2 3
+.. grid:: 1 2 2 2
    :gutter: 2
 
    .. grid-item-card:: Installation
@@ -22,6 +22,7 @@ tambora
    .. grid-item-card:: User Guide
       :link: user_guide/index
       :link-type: doc
+      :img-bottom: user_guide/multicomponent_IC.png
 
       In-depth explanations of tambora's core concepts: units, self-gravity,
       external forces, and more.
@@ -29,49 +30,33 @@ tambora
    .. grid-item-card:: Examples
       :link: examples/index
       :link-type: doc
+      :img-bottom: examples/GC_stream_evolution.gif
 
       Notebooks covering tambora's features, from basics to
       science applications.
 
-   .. grid-item-card:: Diagnostics
-      :link: diagnostics/index
-      :link-type: doc
+   .. .. grid-item-card:: Diagnostics
+   ..    :link: diagnostics/index
+   ..    :link-type: doc
 
-      Convergence tests, scaling benchmarks, and energy conservation
-      validation.
+   ..    Convergence tests, scaling benchmarks, and energy conservation
+   ..    validation.
+
+   .. .. grid-item-card:: What's New
+   ..    :link: changelog
+   ..    :link-type: doc
+
+      Release notes and the changelog for each version of tambora.
+
+.. The navbar is built from the top-level toctree below (Installation,
+.. Quickstart, User Guide, Examples). Diagnostics and the changelog are kept
+.. off the navbar on purpose — they are reachable from the cards above and are
+.. marked :orphan: so they still build and remain linkable.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Getting Started
    :hidden:
 
    installation
    quickstart
-
-.. toctree::
-   :maxdepth: 3
-   :caption: User Guide
-   :hidden:
-
    user_guide/index
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Examples
-   :hidden:
-
    examples/index
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Reference
-   :hidden:
-
-   changelog
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Diagnostics
-   :hidden:
-
-   diagnostics/index

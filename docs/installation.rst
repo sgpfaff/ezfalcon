@@ -2,13 +2,14 @@ Installation
 ============
 
 
-🚧🚨 **Warning!** 🚧🚨 :ref:`home` is still under development. Backwards compatibility is not guaranteed.
+🚧🚨 **Warning!** 🚧🚨 This code is still under development. Backwards compatibility is not guaranteed.
 
 Basic Installation
 ------------------
-The latest pre-release version of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+The latest pre-release version of :ref:`home` can be installed using pip as follows:
 
-.. code-block:: bash
+.. code-block:: python
+
     pip install tambora==0.1.0a1.dev17
 
 
