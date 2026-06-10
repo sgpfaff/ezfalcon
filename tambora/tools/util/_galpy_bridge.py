@@ -98,6 +98,7 @@ UNVECTORIZED_POTENTIALS = (
     potential.FerrersPotential,
     potential.NullPotential,
     potential.SoftenedNeedleBarPotential,
+    potential.MovingObjectPotential
 ) + (
     () if _galpy_has_vectorized_ellipsoidal else _ELLIPSOIDAL_POTENTIALS
 )
@@ -168,6 +169,8 @@ def _check_supported_pot(pot):
     validated recursively.
     '''
     for p in _iter_components(pot):
+        if isinstance(p, potential.MovingObjectPotential):
+             _check_supported_leaf(p._pot)
         if isinstance(p, _WrapperPotentialCls):
             # Reject unknown wrappers
             if not isinstance(p, tuple(w for w in ALL_SUPPORTED_WRAPPERS if w is not None)):
@@ -196,7 +199,7 @@ def _check_supported_leaf(p):
     elif not isinstance(p, ALL_SUPPORTED_POTENTIALS):
         raise TypeError(
             f"{type(p).__name__} is not supported by tambora. "
-            f"Supported potentials: {', '.join(p.__name__ for p in ALL_SUPPORTED_POTENTIALS)}"
+            f"Supported potentials: https://tambora.readthedocs.io/en/latest/user_guide/external_conservative_forces_and_potentials.html#galpy"
         )
 
 def _check_physical(obj):
