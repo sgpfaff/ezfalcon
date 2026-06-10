@@ -794,3 +794,76 @@ def test_iac_self_potential_analytical_two_body():
     expected_own = np.array([m0 * phi_0_own, m1 * phi_1_own])
     result_own = disk.self_potential(t=0, method='direct', eps=0.0, include_all_components=False, return_internal=True)
     np.testing.assert_allclose(result_own, expected_own, rtol=1e-15)
+
+
+# --- use_cached x include_all_components interaction --------------------------- #
+
+def test_iac_default_uses_cache_when_include_all():
+    '''
+    Aim: With include_all_components=True (default) and no method, the cached
+    all-components result is used automatically and matches recomputing it
+    on-the-fly with the same method the cache was built with.
+
+    If this fails: the include_all default no longer falls back to the cache.
+    '''
+    disk = _IAC_SIM.disk
+    cached = disk.self_potential(t=0, return_internal=True)
+    recomputed = disk.self_potential(t=0, method='direct', eps=0.0,
+                                     include_all_components=True, return_internal=True)
+    np.testing.assert_allclose(cached, recomputed, rtol=1e-12)
+
+
+def test_iac_default_not_include_all_requires_method():
+    '''
+    Aim: With include_all_components=False and no method, the all-components
+    cache cannot serve the request, so use_cached defaults to False and a
+    method must be supplied -> ValueError (instead of silently returning the
+    all-components cache).
+
+    If this fails: include_all_components=False is silently using the cache.
+    '''
+    disk = _IAC_SIM.disk
+    with pytest.raises(ValueError, match="all-components cache cannot be used"):
+        disk.self_potential(t=0, include_all_components=False)
+
+
+def test_iac_explicit_cached_with_not_include_all_raises():
+    '''
+    Aim: Explicitly asking for use_cached=True together with
+    include_all_components=False is contradictory (the cache is all-components)
+    and must raise.
+
+    If this fails: a physically unsatisfiable request is being honored.
+    '''
+    disk = _IAC_SIM.disk
+    with pytest.raises(ValueError, match="single component in isolation"):
+        disk.self_potential(t=0, use_cached=True, include_all_components=False)
+
+
+def test_iac_self_gravity_default_not_include_all_requires_method():
+    '''Same gating as self_potential, for the acceleration accessor.'''
+    disk = _IAC_SIM.disk
+    with pytest.raises(ValueError, match="all-components cache cannot be used"):
+        disk.self_gravity(t=0, include_all_components=False)
+
+
+def test_iac_self_gravity_explicit_cached_with_not_include_all_raises():
+    '''Explicit use_cached=True + include_all_components=False must raise.'''
+    disk = _IAC_SIM.disk
+    with pytest.raises(ValueError, match="single component in isolation"):
+        disk.self_gravity(t=0, use_cached=True, include_all_components=False)
+
+
+def test_iac_not_include_all_with_method_still_works():
+    '''
+    Aim: Providing a method makes include_all_components=False work on-the-fly
+    (no cache involved), giving the own-component-only result. Confirms the new
+    gating doesn't break the explicit-method path.
+
+    If this fails: requiring a method also blocked the legitimate compute path.
+    '''
+    disk = _IAC_SIM.disk
+    expected = direct_gravity.acc(_IAC_COMP1_POS, _IAC_COMP1_MASS)
+    acc = disk.self_gravity(t=0, method='direct', eps=0.0,
+                            include_all_components=False, return_internal=True)
+    np.testing.assert_allclose(acc, expected, rtol=1e-15)

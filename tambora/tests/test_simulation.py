@@ -1725,8 +1725,11 @@ def test_component_self_potential_cached(two_component_sim):
     sp = two_component_sim.stars.self_potential(t=0)
     assert sp.shape == (10,)
 
-def test_component_self_potential_cached_warns_include_all(two_component_sim):
-    with pytest.warns(UserWarning, match="Using cached self-potential"):
+def test_component_self_potential_cached_include_all_false_requires_method(two_component_sim):
+    # The cache is an all-components quantity, so include_all_components=False
+    # cannot be served from it: require an explicit method instead of silently
+    # returning the all-components cache.
+    with pytest.raises(ValueError, match="all-components cache cannot be used"):
         two_component_sim.stars.self_potential(t=0, include_all_components=False)
 
 def test_component_energy(two_component_sim):

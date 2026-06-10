@@ -699,8 +699,8 @@ class Component:
             Units: `Msun km^2 / s^2`
         '''
         if use_cached and self._sim._cached_self_pot is not None:
-            if not include_all_components:
-                warnings.warn("Using cached self-potential, which includes all particles.")
+            # Reaching the cache implies include_all_components=True (enforced by
+            # @_resolve_use_cached), so the cached all-components result is valid.
             return self.mass * self._snap(self._sim._cached_self_pot, t)
         elif use_cached and self._sim._cached_self_pot is None:
             raise ValueError("Cached self-potential is not available. Please set use_cached to False and provide a method for computing self-gravity.")
