@@ -30,7 +30,7 @@ tambora
    .. grid-item-card:: Examples
       :link: examples/index
       :link-type: doc
-      :img-bottom: examples/GC_stream_evolution.gif
+      :img-bottom: examples/GC_stream_evolution_no_axes.gif
 
       Notebooks covering tambora's features, from basics to
       science applications.
