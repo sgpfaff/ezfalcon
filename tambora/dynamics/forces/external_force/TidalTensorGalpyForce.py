@@ -12,7 +12,7 @@ from tambora.tools.util.units import KMS_TO_KPCGYR
 from galpy.util.coords import rect_to_cyl
 from galpy import potential
 
-class LinearTideGalpyForce(ExternalConservativeForce):
+class TidalTensorGalpyForce(ExternalConservativeForce):
     def __init__(self, pot, center=None):
         pot = _ensure_pot(pot)
         for p in _iter_components(pot):

@@ -1,9 +1,9 @@
-from tambora.dynamics.forces import ExternalForce, ExternalConservativeForce
+from tambora.dynamics.forces import Force, ExternalConservativeForce
 from tambora.dynamics.forces.CompositeForce import _CompositePlain, _CompositeConservative
 import numpy as np
 import pytest
 
-class ExampleExternalForce(ExternalForce):
+class ExampleExternalForce(Force):
     def __init__(self, multiplier):
         self.multiplier = multiplier
     def acc(self, pos, vel, mass, t):

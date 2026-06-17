@@ -1,11 +1,11 @@
-from ..Force import ExternalForce
+from ..Force import Force
 from ..Conservative import Conservative
 from abc import abstractmethod
 from typing import Tuple
 import numpy as np
 
 
-class ExternalConservativeForce(ExternalForce, Conservative):
+class ExternalConservativeForce(Force, Conservative):
     """External force derived from a fixed scalar potential.
 
     The field is imposed from outside the system, so both acceleration and

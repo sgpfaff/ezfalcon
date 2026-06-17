@@ -13,13 +13,13 @@ dedicated force-only / pot-only paths, only the body of these methods changes.
 from typing import Tuple, Union
 import numpy as np
 
-from ..Force import InteractionForce
+from ..Force import Force
 from ..Conservative import Conservative
 from .falcON import _falcON_gravity
 from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
-class SelfGravityForce(InteractionForce, Conservative):
+class SelfGravityForce(Force, Conservative):
     @abstractmethod
     def acc(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray: ...
     @abstractmethod

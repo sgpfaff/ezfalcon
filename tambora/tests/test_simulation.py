@@ -376,7 +376,7 @@ def test_add_external_force_rejects_non_force():
         ...
     testInstance = Test()
     sim = Sim()
-    with pytest.raises(TypeError, match="Expected an ExternalForce"):
+    with pytest.raises(TypeError, match="Expected a Force"):
         sim.add_external_force(testInstance)
 
 def test_add_external_force_rejects_self_gravity():
@@ -385,9 +385,9 @@ def test_add_external_force_rejects_self_gravity():
     with pytest.raises(TypeError, match="not an external force"):
         sim.add_external_force(force)
 
-from tambora.dynamics import ExternalForce
+from tambora.dynamics import Force
 from tambora.tools.util import KMS_TO_KPCGYR
-class CustomBaseForce(ExternalForce):
+class CustomBaseForce(Force):
     def __init__(self):
         ...
     def acc(self, pos, vel, mass, t):

@@ -41,28 +41,7 @@ class Force(ABC):
         return CompositeForce([self, other])
 
 
-class ExternalForce(Force):
-    """Single-particle force: ``a_i = f(x_i, v_i, m_i, t)``.
-
-    The field is imposed from outside the simulated system and each particle is
-    evaluated independently (embarrassingly parallel; no solver). Note that an
-    external force *may* depend on a particle's own mass (e.g. dynamical
-    friction); what makes it external is that it does not couple particles to
-    one another.
-    """
-
-
-class InteractionForce(Force):
-    """Collective N-body force: ``a_i = f({x_j}, {v_j}, {m_j}, t)``.
-
-    The field is sourced by the simulation particles themselves, so evaluating
-    it couples every particle to every other and requires a solver (tree,
-    direct summation). Self-gravity is the canonical example. These are routed
-    through the solver/cache path, never through ``add_external_force``.
-    """
-
-
-class NullExternalForce(ExternalForce):
+class NullForce(Force):
     """No-op external force. Used as an empty external slot."""
 
     def __init__(self):

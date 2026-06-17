@@ -4,7 +4,7 @@ Simulation class for tambora.
 
 import numpy as np
 from .component import Component
-from ..dynamics import (_runner, self_gravity, Force, InteractionForce, SelfGravityForce, NullSelfGravity, Conservative, ExternalGalpyPotential,
+from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelfGravity, Conservative, ExternalGalpyPotential,
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
@@ -191,21 +191,21 @@ class Sim:
         Raises
         ------
         TypeError
-            If force is an instance of SelfGravity. Only accepts external
+            If force is an instance of SelfGravityForce. Only accepts external
             forces.
         '''
         def _assign_force(_force):
-            if isinstance(_force, InteractionForce):
-                raise TypeError("The provided force is a collective/self force (e.g. self-gravity), "
-                                "not an external force. Enable it via turn_self_gravity_on(), not "
-                                "add_external_force().")
+            if isinstance(_force, SelfGravityForce):
+                raise TypeError("The provided force is a self-gravity force, "
+                                "not an external force. Self-gravity forces are included"
+                                "in the run() method.")
             elif isinstance(_force, Conservative):
                 self._conserv_ext_force = self._conserv_ext_force + _force
             elif isinstance(_force, Force):
                 self._base_ext_force = self._base_ext_force + _force
             else:
                 raise TypeError(
-                    f"Expected an ExternalForce (Conservative or not) subclass, "
+                    f"Expected a Force (Conservative or not) subclass, "
                     f"got {type(_force).__name__!r}."
                 )
         if isinstance(force, _CompositeConservative) or isinstance(force, _CompositePlain):

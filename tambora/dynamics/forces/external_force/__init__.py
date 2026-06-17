@@ -2,7 +2,7 @@ from .ExternalConservativeForce import ExternalConservativeForce
 
 try:
     from .ExternalGalpyPotential import ExternalGalpyPotential
-    from .LinearTideGalpyForce import LinearTideGalpyForce
+    from .TidalTensorGalpyForce import TidalTensorGalpyForce
 
 except ImportError:
     class ExternalGalpyPotential:
@@ -12,7 +12,7 @@ except ImportError:
                 "Refer to https://docs.galpy.org/en/stable/installation.html" \
                 "for galpy installation instructions."
             )
-    class LinearTideGalpyForce:
+    class TidalTensorGalpyForce:
         def __init__(self, *args, **kwargs):
             raise ImportError(
                 "LinearTideGalpyForce requires galpy. "
