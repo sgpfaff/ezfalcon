@@ -85,6 +85,7 @@ VECTORIZED_POTENTIALS = tuple(p for p in (
     potential.DehnenBarPotential,
     potential.SpiralArmsPotential,
     potential.interpRZPotential,
+    potential.MultipoleExpansionPotential
 ) if p is not None) + (
     # EllipsoidalPotentials: vectorized in galpy > 1.11.2
     _ELLIPSOIDAL_POTENTIALS if _galpy_has_vectorized_ellipsoidal else ()
