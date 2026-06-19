@@ -68,34 +68,43 @@ All About Simulations
 Forces
 ------
 
-.. grid:: 1 2 2 3
+.. grid:: 1 2 2 2
    :gutter: 2
 
    .. grid-item-card:: Overview of Force Classes
       :link: force_types
       :link-type: doc
 
-      External, self-gravity, and non-inertial forces.
-
-   .. grid-item-card:: Self-Gravity Force Classes
-      :link: self_gravity_force_and_solvers
-      :link-type: doc
-      :img-bottom: tree_visualization_v2.gif
-
-      Compute self-gravity forces with falcON, direct summation, or Barnes-Hut. Per-component self-gravity.
-      Softening lengths. Supported Methods
-
-   .. grid-item-card:: External Conservative Force Classes
-      :link: external_conservative_forces_and_potentials
-      :link-type: doc
-
-      Define and apply conservative forces from potentials.
+      Detailing tambora's treatment of forces as being external or interaction forces, conservative or non-conservative.
 
    .. grid-item-card:: Usage as a Standalone Force Calculator
       :link: standalone_force_usage
       :link-type: doc
 
-      Define and apply conservative forces from potentials.
+      Calculating forces outside of a simulation using force classes directly.
+
+   .. grid-item-card:: Custom Forces
+
+      Implementing custom forces in tambora.
+
+Conservative Forces
+^^^^^^^^^^^^^^^^^^^
+.. grid:: 1 2 2 2
+   
+   .. grid-item-card:: Self-Gravity Solvers
+      :link: self_gravity_force_and_solvers
+      :link-type: doc
+      :img-bottom: tree_visualization_v2.gif
+
+      Compute self-gravity forces with falcON, direct summation, or Barnes-Hut. Per-component softening lengths.
+
+   .. grid-item-card:: External Conservative Forces and their Potentials
+      :link: external_conservative_forces
+      :link-type: doc
+      :img-bottom: NFW_acc_vector_field.png
+
+      Compute forces from external potentials such as those in galpy.
+
 
 Tools & Interoperability
 ------------------------
@@ -146,9 +155,10 @@ Tools & Interoperability
    :maxdepth: 2
 
    force_types
-   self_gravity_force_and_solvers
-   external_conservative_forces_and_potentials
    standalone_force_usage
+   custom_forces
+   self_gravity_force_and_solvers
+   external_conservative_forces
 
 .. toctree::
    :hidden:

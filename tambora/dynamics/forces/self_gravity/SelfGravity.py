@@ -1,4 +1,4 @@
-"""Self-gravity solvers as :class:`ConservativeForceField` objects.
+"""Self-gravity solvers as :class:`InteractionForce` + :class:`Conservative` objects.
 
 These wrap the C-extension gravity functions in the Force-object API used at
 the integrator boundary. Construction params (eps, theta, kernel) are frozen
@@ -13,25 +13,26 @@ dedicated force-only / pot-only paths, only the body of these methods changes.
 from typing import Tuple, Union
 import numpy as np
 
-from ..ConservativeForce import ConservativeForce
+from ..Force import Force
+from ..Conservative import Conservative
 from .falcON import _falcON_gravity
 from .directSummation import _direct_summation_C, _direct_summation_py
 from abc import abstractmethod
 
-class SelfGravityForce(ConservativeForce):
+class SelfGravityForce(Force, Conservative):
     @abstractmethod
     def acc(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray: ...
     @abstractmethod
     def potential(self, pos: np.ndarray, mass: np.ndarray) -> np.ndarray: ...
-    
+
     def acc_and_potential(self, pos: np.ndarray, mass: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         return self.acc(pos, mass), self.potential(pos, mass)
     def _eval_acc(self, pos, vel, mass, t):
         return self.acc(pos, mass)
-    
+
     def _eval_potential(self, pos, vel, mass, t):
         return self.potential(pos, mass)
-    
+
     def _eval_acc_and_potential(self, pos, vel, mass, t):
         return self.acc_and_potential(pos, mass)
     

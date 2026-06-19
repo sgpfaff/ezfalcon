@@ -376,18 +376,18 @@ def test_add_external_force_rejects_non_force():
         ...
     testInstance = Test()
     sim = Sim()
-    with pytest.raises(TypeError, match="Expected a ConservativeForce or BaseForce subclass"):
+    with pytest.raises(TypeError, match="Expected a Force"):
         sim.add_external_force(testInstance)
 
 def test_add_external_force_rejects_self_gravity():
     sim = Sim()
     force = DirectSummationGravity(eps=0.1)
-    with pytest.raises(TypeError, match="The provided force is a self-gravity force, not an external force."):
+    with pytest.raises(TypeError, match="not an external force"):
         sim.add_external_force(force)
 
-from tambora.dynamics import BaseForce
+from tambora.dynamics import Force
 from tambora.tools.util import KMS_TO_KPCGYR
-class CustomBaseForce(BaseForce):
+class CustomBaseForce(Force):
     def __init__(self):
         ...
     def acc(self, pos, vel, mass, t):
@@ -416,16 +416,14 @@ def test_external_BaseForce_contributes_to_acc():
     ground_truth_acc = ex_custom_base_force.acc(pos, vel*KMS_TO_KPCGYR, mass, t)
     np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
 
-from tambora.dynamics import ConservativeForce
-class CustomConservForce(ConservativeForce):
+from tambora.dynamics import ExternalConservativeForce
+class CustomConservForce(ExternalConservativeForce):
     def __init__(self):
         ...
-    def acc(self, pos, mass, t):
-        return np.sum(mass) * pos + t
-    def potential(self, pos, mass, t):
-        return np.sum(mass**2) * np.linalg.norm(pos, axis=1)**2 + t**2
-    def _eval_acc(self, pos, vel, mass, t):
-        return self.acc(pos, mass, t)
+    def acc(self, pos, t):
+        return pos + t
+    def potential(self, pos, t):
+        return np.linalg.norm(pos, axis=1)**2 + t**2
     
 def test_add_external_force_adds_ConservativeForce_to_conserv_ext_force():
     sim = Sim()
@@ -445,7 +443,7 @@ def test_external_ConservativeForce_contributes_to_acc():
                       pos=pos, 
                       vel=vel,
                       mass=mass)
-    ground_truth_acc = ex_custom_conserv_force.acc(pos, mass, t)
+    ground_truth_acc = ex_custom_conserv_force.acc(pos, t)
     np.testing.assert_allclose(sim.external_acc(t=t, return_internal=True), ground_truth_acc)
 
 def test_external_ConservativeForce_contributes_to_potential():
@@ -461,7 +459,7 @@ def test_external_ConservativeForce_contributes_to_potential():
                       vel=vel,
                       mass=mass)
     
-    ground_truth_pot = ex_custom_conserv_force.potential(pos, mass, t) * mass
+    ground_truth_pot = ex_custom_conserv_force.potential(pos, t) * mass
     np.testing.assert_allclose(sim.compute_external_pot(t=t, return_internal=True), ground_truth_pot)
 
 def test_add_external_force_assigns_mixed_composite_correctly():

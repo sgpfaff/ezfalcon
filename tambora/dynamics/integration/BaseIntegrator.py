@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import numpy as np
-from ..forces.BaseForce import BaseForce
-from ..forces.ConservativeForce import ConservativeForce
+from ..forces.Force import Force
+from ..forces.Conservative import Conservative
 from ..forces.self_gravity.SelfGravity import SelfGravityForce
 import numpy as np
 
@@ -38,8 +38,8 @@ class BaseIntegrator(ABC):
         t: float,
         dt: float,
         self_gravity_force: SelfGravityForce,
-        conserv_ext_force: ConservativeForce,
-        base_external_force: BaseForce
+        conserv_ext_force: Conservative,
+        base_external_force: Force
     ) -> StepResult:
         ...
     
@@ -49,7 +49,7 @@ class BaseIntegrator(ABC):
         mass: np.ndarray,
         t,
         self_gravity_force: SelfGravityForce,
-        cons_ext_force: ConservativeForce,
+        cons_ext_force: Conservative,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Evaluate self-gravity and conservative external forces.
 

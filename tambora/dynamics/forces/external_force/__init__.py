@@ -1,9 +1,21 @@
+from .ExternalConservativeForce import ExternalConservativeForce
+
 try:
     from .ExternalGalpyPotential import ExternalGalpyPotential
+    from .TidalTensorGalpyForce import TidalTensorGalpyForce
+
 except ImportError:
     class ExternalGalpyPotential:
         def __init__(self, *args, **kwargs):
             raise ImportError(
                 "ExternalGalpyPotential requires galpy. "
-                "Install with: pip install 'tambora[galpy]'"
+                "Refer to https://docs.galpy.org/en/stable/installation.html" \
+                "for galpy installation instructions."
+            )
+    class TidalTensorGalpyForce:
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "LinearTideGalpyForce requires galpy. "
+                "Refer to https://docs.galpy.org/en/stable/installation.html" \
+                "for galpy installation instructions."
             )
