@@ -1,4 +1,7 @@
 from ..forces import SelfGravityForce, Conservative, Force
+from ..operations.step_context import StepContext, base_providers
+from ..operations.diagnostic import Diagnostic
+from ..operations.accumulator import Accumulator
 from .BaseIntegrator import BaseIntegrator
 import numpy as np
 from tqdm import tqdm
@@ -11,9 +14,10 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             self_gravity_force: Optional[SelfGravityForce], 
             conserv_ext_force: Optional[Conservative],
             base_ext_force: Optional[Force], t0: float,
-            t_end: float, dt: float, dt_out: float, 
-            return_self_gravity_pot: bool = True, 
-            return_self_gravity_acc: bool = True):
+            t_end: float, dt: float, dt_out: float,
+            return_self_gravity_pot: bool = True,
+            return_self_gravity_acc: bool = True,
+            operations=(), record_into=None, summaries_into=None):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -79,26 +83,96 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t0, t_end)
 
     positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
-    self_gravity_pot, self_gravity_acc = _make_self_gravity_arrays(pos, mass, self_gravity_force, 
-                                                                   return_self_gravity_pot, return_self_gravity_acc, nsnaps)
+
+    # --- operations: providers, record buffers, per-run state, initial snapshot ---------
+    # Self-gravity acc/pot are recorded through the same generic diagnostic path as user
+    # diagnostics, pulled via base providers (StepResult fast path during the run, the
+    # force on the initial snapshot). The return_self_gravity_* flags just gate whether
+    # those two names are recorded.
+    providers = base_providers(self_gravity_force)
+    diagnostics = [op for op in operations if isinstance(op, Diagnostic) and op.name]
+    accumulators = [op for op in operations if isinstance(op, Accumulator)]
+    displays = [op for op in operations if getattr(op, "display", None) is not None]
+    providers.update({d.name: d.compute for d in diagnostics})
+    sg_names = ([] + (["self_acc"] if return_self_gravity_acc else [])
+                   + (["self_pot"] if return_self_gravity_pot else []))
+    records = {}
+    n = mass.shape[0]
+    for op in operations:
+        op.init(n)
+    if diagnostics or sg_names:
+        ctx0 = StepContext(pos, vel, mass, t0, 0, None, providers)
+        for name in sg_names:
+            _record_diagnostic(records, name, ctx0.get(name), 0, nsnaps)
+        for d in diagnostics:
+            _record_diagnostic(records, d.name, ctx0.get(d.name), 0, nsnaps)
+
     i_out = 1
     current_pos, current_vel = pos, vel
     current_t = t0
+    postfix = {}
     integrator.reset()
-    for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
+    pbar = tqdm(ts_integrate[1:])
+    for step, t in enumerate(pbar, start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
                                       self_gravity_force, conserv_ext_force, base_ext_force)
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
-        if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
+
+        is_output = step % steps_per_output == 0 and i_out < nsnaps
+        # One context per step, shared by accumulators, displays, and diagnostics so a
+        # pulled quantity (e.g. boundedness) is computed at most once this step.
+        ctx = None
+        def _ctx():
+            nonlocal ctx
+            if ctx is None:
+                ctx = StepContext(current_pos, current_vel, mass, current_t, step, step_result, providers)
+            return ctx
+
+        if accumulators:
+            for acc in accumulators:
+                if step % acc.cadence == 0:
+                    acc.update(_ctx())
+
+        if displays:
+            updated = False
+            for op in displays:
+                if step % (op.display.every or steps_per_output) == 0:
+                    label, value = op.display.text(_ctx(), op)
+                    postfix[label] = value
+                    updated = True
+            if updated:
+                pbar.set_postfix(postfix, refresh=False)
+
+        if is_output: # recording snapshot
             positions[i_out] = step_result.pos.copy()
             velocities[i_out] = step_result.vel.copy()
-            if return_self_gravity_acc:
-                self_gravity_acc[i_out] += step_result.self_acc.copy() if step_result.self_acc is not None else 0.0
-            if return_self_gravity_pot:
-                self_gravity_pot[i_out] += step_result.self_pot.copy() if step_result.self_pot is not None else 0.0
+            for name in sg_names:
+                _record_diagnostic(records, name, _ctx().get(name), i_out, nsnaps)
+            for d in diagnostics:
+                if step % d.cadence == 0:
+                    _record_diagnostic(records, d.name, _ctx().get(d.name), i_out, nsnaps)
             i_out += 1
 
-    return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
+    summaries = {}
+    for op in operations:
+        result = op.finalize()
+        if result:
+            summaries.update(result)
+
+    if record_into is not None:
+        record_into.update(records)
+    if summaries_into is not None:
+        summaries_into.update(summaries)
+    return (positions, velocities, ts_out,
+            records.get("self_acc"), records.get("self_pot"))
+
+
+def _record_diagnostic(records, name, value, i, nsnaps):
+    """Lazily allocate a ``(nsnaps, *value.shape)`` buffer and store this snapshot."""
+    value = np.asarray(value)
+    if name not in records:
+        records[name] = np.empty((nsnaps,) + value.shape, dtype=value.dtype)
+    records[name][i] = value
 
 
 def _check_dt_dt_out(dt, dt_out, t0, t_end):
@@ -147,18 +221,3 @@ def _make_pos_vel_arrays(pos, vel, mass, nsnaps):
     positions[0] = pos.copy()
     velocities[0] = vel.copy()
     return positions, velocities
-
-
-def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity_pot,
-                            return_self_gravity_acc, nsnaps):
-    self_gravity_pot = None
-    self_gravity_acc = None
-    self_acc, self_pot = self_gravity_force.acc_and_potential(pos, mass)
-    n = mass.shape[0]
-    if return_self_gravity_pot:
-        self_gravity_pot = np.zeros((nsnaps, n), dtype=np.float64)
-        self_gravity_pot[0] += self_pot.copy() if self_pot is not None else 0.0
-    if return_self_gravity_acc:
-        self_gravity_acc = np.zeros((nsnaps, n, 3), dtype=np.float64)
-        self_gravity_acc[0] = self_acc.copy() if self_acc is not None else 0.0
-    return self_gravity_pot, self_gravity_acc

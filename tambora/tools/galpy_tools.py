@@ -69,6 +69,7 @@ def galpy_orbit_to_tambora(orb):
 if _GALPY_IMPORT_ERROR is None:
     SUPPORTED_GALPY_DFS = (
         df.isotropicHernquistdf,
+        df.osipkovmerrittHernquistdf,
         df.isotropicPlummerdf,
         df.isotropicNFWdf,
         df.kingdf,

@@ -27,6 +27,32 @@ class Component:
             return array[:, self._sl]
         return array[ti, self._sl]
 
+    def __getattr__(self, name):
+        """Expose this component's registered diagnostics, e.g. sim.sat.bound(t).
+
+        A diagnostic registered as ``"<stem>_<component>"`` surfaces here as
+        ``<stem>``. Only fires for names not found by normal lookup.
+        """
+        if name.startswith("_"):
+            raise AttributeError(name)
+        sim = self.__dict__.get("_sim")
+        comp = self.__dict__.get("_name")
+        if sim is not None:
+            full = f"{name}_{comp}"
+            if full in sim._op_by_name:              # diagnostic: sim.sat.bound(t)
+                return lambda t=..., use_cached=True: sim.record(full, t, use_cached)
+            if full in sim._summaries:               # accumulator field: sim.sat.n_strip
+                return sim._summaries[full]
+        raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
+
+    def track_boundedness(self, source="self", **kwargs):
+        """Record this component's boundedness during the run (forwards to Sim)."""
+        return self._sim.track_boundedness(self._name, source=source, **kwargs)
+
+    def track_stripping(self, **kwargs):
+        """Track this component's stripping events during the run (forwards to Sim)."""
+        return self._sim.track_stripping(self._name, **kwargs)
+
 
      # --- Position Accessors -----------------------------------------------------------------
     

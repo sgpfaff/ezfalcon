@@ -8,6 +8,9 @@ from ..dynamics import (_runner, self_gravity, Force, SelfGravityForce, NullSelf
                         SELF_GRAVITY_METHODS, INTEGRATORS)
 
 from ..dynamics.forces.CompositeForce import _CompositeConservative, _CompositePlain
+from ..dynamics.operations import (Diagnostic, StateView, base_providers,
+                                   Boundedness, ComponentBoundedness, StrippingTracker,
+                                   DisplayOnly, fraction_bound, number_unbound, energy_drift)
 from ..tools.util.units import unit_handler, KMS_TO_KPCGYR
 import warnings
 import inspect
@@ -42,6 +45,12 @@ class Sim:
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
+
+        # Mid-integration operations + their recorded outputs (populated by run())
+        self._operations = []        # registered operations, in order
+        self._op_by_name = {}        # name -> operation (for accessors / dependency pull)
+        self._records = {}           # name -> (nsnaps, ...) recorded diagnostic array
+        self._summaries = {}         # field name -> per-particle accumulator result
 
     def _ti(self, t, vectorized=True):
         """
@@ -80,9 +89,90 @@ class Sim:
         slices = self.__dict__.get("_slices", {})
         if name in slices:
             return Component(self, slices[name], name)
+        ops = self.__dict__.get("_op_by_name", {})
+        if name in ops:
+            return lambda t=..., use_cached=True: self.record(name, t, use_cached)
+        summaries = self.__dict__.get("_summaries", {})
+        if name in summaries:
+            return summaries[name]
         raise AttributeError(
             f"\'{type(self).__name__}\' has no attribute or component named {name!r}"
         )
+
+    # --- Mid-integration operations ------------------------------------------------------------
+
+    def add_operation(self, op):
+        '''Register a mid-integration operation (e.g. a diagnostic) to run during run().'''
+        if self._has_run:
+            raise RuntimeError("Cannot add operations after run()")
+        if op.name is not None:
+            if op.name in self._op_by_name:
+                raise ValueError(f"An operation named {op.name!r} is already registered.")
+            self._op_by_name[op.name] = op
+        self._operations.append(op)
+        return op
+
+    def track_boundedness(self, component=None, source="self", display=None, **kwargs):
+        '''Record per-particle boundedness during the run.
+
+        ``component=None`` tracks the whole system; otherwise it tracks that
+        component (with potential sourced by the component only when
+        ``source='self'``). Pass ``display=True`` (or a :class:`Display`) to also show
+        the bound fraction in the progress bar. Returns the operation handle.
+        '''
+        op = (Boundedness(**kwargs) if component is None
+              else ComponentBoundedness(self, component, source, **kwargs))
+        if display is not None:
+            if display is 'frac_bound':
+                display = fraction_bound("f_bound" if component is None else f"f_bound({component})")
+            elif display is 'n_unbound':
+                display = number_unbound("number unbound" if component is None else f"number bound({component})")
+            op.display = display
+        return self.add_operation(op)
+
+    def show(self, display):
+        '''Show a standalone :class:`Display` in the progress bar (records nothing).'''
+        return self.add_operation(DisplayOnly(display))
+
+    def track_stripping(self, component=None, cadence=1, confirm=1, source="self"):
+        '''Track stripping events (times, phase space, strip/recapture counts).
+
+        Registers the boundedness it depends on if not already present, then a
+        :class:`StrippingTracker` running every ``cadence`` steps with ``confirm``-check
+        debounce. Results are read as per-particle attributes after the run, e.g.
+        ``sim.sat.n_strip`` / ``sim.sat.tstrip_last``. Returns the tracker handle.
+        '''
+        dep = "bound" if component is None else f"bound_{component}"
+        if dep not in self._op_by_name:
+            self.track_boundedness(component, source=source)
+        return self.add_operation(StrippingTracker(self, component, cadence=cadence, confirm=confirm))
+
+    def _providers(self):
+        '''Derived-quantity providers for the recompute path (use_cached=False).'''
+        prov = base_providers(self._self_gravity_force)
+        prov.update({op.name: op.compute for op in self._operations
+                     if isinstance(op, Diagnostic) and op.name})
+        return prov
+
+    def record(self, name, t=..., use_cached=True):
+        '''Read a recorded quantity at *t* from the unified record store.
+
+        Registered diagnostics support both the cached read and ``use_cached=False``
+        recompute. Built-in recorded quantities (``"self_acc"``, ``"self_pot"``) live
+        in the same store but only support the cached read here -- use the dedicated
+        accessors (``self_gravity``/``self_potential``) for on-the-fly recomputation
+        with a chosen method.
+        '''
+        op = self._op_by_name.get(name)
+        if isinstance(op, Diagnostic):
+            return op.at(t, self._records, StateView(self), use_cached)
+        if name in self._records:
+            if not use_cached:
+                raise ValueError(
+                    f"record({name!r}, use_cached=False) is not supported for built-in "
+                    "recorded quantities; use the dedicated accessor to recompute.")
+            return self._records[name][self._ti(t)]
+        raise KeyError(f"No recorded quantity named {name!r}.")
     
     # --- Setup ---------------------------------------------------------------------------------                                                   
 
@@ -328,7 +418,8 @@ class Sim:
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
             method: Optional[str] = 'auto', integration_method: str = 'leapfrog',
-            cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True, 
+            cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
+            show_energy: bool = True,
             **kwargs):
         """
         Run the simulation to *t_end* [Gyr].
@@ -396,8 +487,15 @@ class Sim:
                 "Self-gravity will not be used during integration.")
         integrator = INTEGRATORS[integration_method]()
 
-        (self._positions, self._velocities, 
-         self._times, self._cached_self_acc, 
+        self._records = {}
+        self._summaries = {}
+        # Energy-conservation readout is on by default; added transiently so re-runs
+        # don't accumulate it and it isn't treated as a recorded/summary operation.
+        operations = list(self._operations)
+        if show_energy:
+            operations.append(DisplayOnly(energy_drift()))
+        (self._positions, self._velocities,
+         self._times, self._cached_self_acc,
          self._cached_self_pot) = _runner(
                     self._init_pos, self._init_vel, self._mass,
                     integrator,
@@ -410,6 +508,9 @@ class Sim:
                     dt_out = dt_out,
                     return_self_gravity_pot = cache_self_gravity_pot,
                     return_self_gravity_acc = cache_self_gravity_acc,
+                    operations = operations,
+                    record_into = self._records,
+                    summaries_into = self._summaries,
                 )
         self._has_run = True
 
