@@ -1,9 +1,10 @@
 from ..forces import SelfGravityForce, Conservative, Force
-from .BaseIntegrator import BaseIntegrator
+from .BaseIntegrator import BaseIntegrator, StepResult
 import numpy as np
 from tqdm import tqdm
 from functools import partial
 from typing import Optional
+from .step_state import StepState, StepContext, _Progress
 import warnings
 
 def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, 
@@ -11,9 +12,11 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             self_gravity_force: Optional[SelfGravityForce], 
             conserv_ext_force: Optional[Conservative],
             base_ext_force: Optional[Force], t0: float,
-            t_end: float, dt: float, dt_out: float, 
-            return_self_gravity_pot: bool = True, 
-            return_self_gravity_acc: bool = True):
+            t_end: float, dt: float, dt_out: float,
+            return_self_gravity_pot: bool = True,
+            return_self_gravity_acc: bool = True,
+            slices: Optional[dict] = None,
+            hooks: tuple = ()):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -50,6 +53,12 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         Whether to return the self-gravitational potential at each output snapshot. Default is True.
     return_self_gravity_acc : bool, optional
         Whether to return the self-gravitational acceleration at each output snapshot. Default is True.
+    slices : dict, optional
+        Mapping of component name to slice, used to expose components to hooks
+        via ``StepState``. Default is None (no named components).
+    hooks : sequence of (Hook, Cadence), optional
+        Hooks to run during integration, each paired with the cadence that
+        decides when it fires. Default is empty (no hooks).
     **kwargs
         Additional keyword arguments to pass to the self-gravity method.
 
@@ -79,16 +88,40 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     nsnaps, steps_per_output) = _make_time_arrays(dt, dt_out, t0, t_end)
 
     positions, velocities = _make_pos_vel_arrays(pos, vel, mass, nsnaps)
-    self_gravity_pot, self_gravity_acc = _make_self_gravity_arrays(pos, mass, self_gravity_force, 
-                                                                   return_self_gravity_pot, return_self_gravity_acc, nsnaps)
+    (self_gravity_pot, self_gravity_acc,
+     self_acc0, self_pot0) = _make_self_gravity_arrays(pos, mass, self_gravity_force,
+                                                       return_self_gravity_pot, return_self_gravity_acc, nsnaps)
     i_out = 1
     current_pos, current_vel = pos, vel
     current_t = t0
     integrator.reset()
-    for step, t in enumerate(tqdm(ts_integrate[1:]), start=1):
+
+    # Hook plumbing: one reusable view over the live state, refreshed each fire.
+    # The progress bar is created up front so hooks can report to it (via
+    # state.report) from the t0 fire onwards.
+    pbar = tqdm(ts_integrate[1:])
+    ctx = StepContext(slices or {}, self_gravity_force, conserv_ext_force,
+                      base_ext_force, progress=_Progress(pbar))
+    state = StepState(None, ctx)
+
+    # Fire once on the initial state (t0) so hooks capture the starting point.
+    if hooks:
+        initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
+                                    self_acc=self_acc0, self_pot=self_pot0,
+                                    conserv_ext_acc=None, base_ext_acc=None, step=0)
+        _fire(hooks, state, initial_result, 0, steps_per_output, t0, dt)
+
+    for step, t in enumerate(pbar, start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
                                       self_gravity_force, conserv_ext_force, base_ext_force)
+        step_result.step = step
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
+        if hooks:
+            # Hooks fire before recording so a (future) mutating hook's changes
+            # flow into the snapshot. _fire returns whether the state was mutated
+            # ("dirtied") -- the seam for recomputing self-gravity before
+            # recording once mutating hooks are supported. Always False today.
+            _fire(hooks, state, step_result, step, steps_per_output, current_t, dt)
         if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
             positions[i_out] = step_result.pos.copy()
             velocities[i_out] = step_result.vel.copy()
@@ -99,6 +132,33 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             i_out += 1
 
     return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
+
+
+def _fire(hooks, state, result, step, steps_per_output, t, dt):
+    """
+    Run any hooks whose cadence is due at this step.
+
+    Refreshes the shared ``state`` view once (only when something fires),
+    orders mutating hooks before observing ones, and reports whether the state
+    was mutated so the caller can recompute self-gravity if needed.
+
+    Returns
+    -------
+    bool
+        True if a mutating hook ran (the state is now "dirty"). Always False
+        while hooks are read-only.
+    """
+    due = [hook for hook, cadence in hooks if cadence.due(step, steps_per_output, t, dt)]
+    if not due:
+        return False
+    state._update(result)
+    # Mutators first, observers after, so observers see the corrected state.
+    due.sort(key=lambda hook: not getattr(hook, "mutates", False))
+    dirtied = False
+    for hook in due:
+        hook(state)
+        dirtied |= getattr(hook, "mutates", False)
+    return dirtied
 
 
 def _check_dt_dt_out(dt, dt_out, t0, t_end):
@@ -161,4 +221,4 @@ def _make_self_gravity_arrays(pos, mass, self_gravity_force, return_self_gravity
     if return_self_gravity_acc:
         self_gravity_acc = np.zeros((nsnaps, n, 3), dtype=np.float64)
         self_gravity_acc[0] = self_acc.copy() if self_acc is not None else 0.0
-    return self_gravity_pot, self_gravity_acc
+    return self_gravity_pot, self_gravity_acc, self_acc, self_pot

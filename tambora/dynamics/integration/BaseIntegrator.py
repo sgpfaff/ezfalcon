@@ -17,6 +17,7 @@ class StepResult:
     self_pot: np.ndarray  # (N,)   or None
     conserv_ext_acc:  np.ndarray  # (N, 3) or None
     base_ext_acc: np.ndarray # (N, 3) or None
+    step: int = 0
 
 
 class BaseIntegrator(ABC):

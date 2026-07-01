@@ -42,6 +42,7 @@ class Sim:
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
+        self._hooks = [] # (Hook, Cadence) pairs run during integration
 
     def _ti(self, t, vectorized=True):
         """
@@ -410,8 +411,51 @@ class Sim:
                     dt_out = dt_out,
                     return_self_gravity_pot = cache_self_gravity_pot,
                     return_self_gravity_acc = cache_self_gravity_acc,
+                    slices = self._slices,
+                    hooks = self._hooks,
                 )
         self._has_run = True
+
+    # --- Hooks -----------------------------------------------------------------------------------
+
+    def add_hook(self, hook, cadence=None):
+        '''
+        Register a hook to run during integration.
+
+        A hook is a callable ``hook(state)`` receiving a ``StepState`` view of
+        the simulation at the current step. Results are typically accumulated on
+        the hook object for inspection after ``run()``.
+
+        Parameters
+        ----------
+        hook : callable
+            The hook to run. Subclass ``tambora.dynamics.hooks.Hook`` for a hook
+            with a ``default_cadence``, or pass any bare callable.
+        cadence : Cadence, optional
+            When the hook fires. If None, uses the hook's ``default_cadence`` if
+            it has one, otherwise ``EveryOutput()``.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        NotImplementedError
+            If the hook declares ``mutates = True``. Mutating hooks are not yet
+            supported.
+        RuntimeError
+            If the simulation has already been run.
+        '''
+        from ..dynamics.hooks import EveryOutput
+        if self._has_run:
+            raise RuntimeError("Cannot add hooks after run()")
+        if getattr(hook, "mutates", False):
+            raise NotImplementedError(
+                "Mutating hooks are not yet supported; only observing hooks may be added.")
+        if cadence is None:
+            cadence = getattr(hook, "default_cadence", None) or EveryOutput()
+        self._hooks.append((hook, cadence))
 
     # --- Position Accessors -----------------------------------------------------------------
 
@@ -1329,6 +1373,52 @@ class Sim:
                 Es = self.system_energy(t=t, use_cached=False, method=method, return_internal=True, **kwargs)
                 E0 = self.system_energy(t=0, use_cached=False, method=method, return_internal=True, **kwargs)
         return np.abs((Es - E0) / E0)
+
+    # --- Boundedness -----------------------------------------------------------------
+
+    def boundedness(self, component, t=-1, eps=None, method='falcON', theta=0.6, max_iter=50):
+        '''
+        Boolean mask of self-bound particles in *component* at time *t*.
+
+        Post-run counterpart of ``BoundednessHook``: runs iterative unbinding on
+        a stored snapshot. Binding is measured relative to the component itself
+        (its own self-gravity and COM frame), not the full system.
+
+        Parameters
+        ----------
+        component : str
+            Name of the component.
+        t : int or float, optional
+            Snapshot index (int) or time in Gyr (float). Default is -1 (last snapshot).
+        eps : float
+            Softening length. Required.
+            Units: `kpc`
+        method : str, optional
+            Self-gravity solver: 'falcON' (default), 'direct', or 'direct_C'.
+        theta : float, optional
+            falcON opening angle (ignored by the direct methods).
+        max_iter : int, optional
+            Maximum unbinding iterations.
+
+        Returns
+        -------
+        bound : (n_component,) bool array
+            True for bound particles, in the component's particle order.
+
+        Raises
+        ------
+        ValueError
+            If *eps* is not provided or *component* is unknown.
+        '''
+        from ..dynamics.diagnostics import bound_mask
+        if eps is None:
+            raise ValueError("eps is required for boundedness().")
+        if component not in self._slices:
+            raise ValueError(f"Unknown component {component!r}. Known components: {sorted(self._slices)}")
+        ti = self._ti(t, vectorized=False)
+        sl = self._slices[component]
+        return bound_mask(self._positions[ti, sl], self._velocities[ti, sl], self._mass[sl],
+                          eps=eps, method=method, theta=theta, max_iter=max_iter)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
