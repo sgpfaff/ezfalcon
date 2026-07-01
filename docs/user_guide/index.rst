@@ -112,11 +112,12 @@ Tools & Interoperability
 .. grid:: 1 2 2 3
    :gutter: 2
 
-   .. grid-item-card:: Satellite Tools
+   .. grid-item-card:: Evaluating Particle Boundedness
       :link: satellite_tools
       :link-type: doc
 
-      Track satellites, bound mass, and tidal debris.
+      Convenient methods to calculate the boundedness of particles to a satellite at a
+      cadence independent of the simulation output.
 
    .. grid-item-card:: Interoperability
       :link: interoperability
