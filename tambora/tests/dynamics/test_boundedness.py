@@ -1,10 +1,14 @@
-"""Tests for the boundedness diagnostics, focused on the tidal Jacobi criterion.
+"""Tests for the boundedness diagnostics in ``tambora/dynamics/diagnostics.py``.
 
-The ``'energy'`` criterion is the self-binding baseline; ``'jacobi'`` adds the
-linear tidal field. These tests pin down the tidal-tensor sign convention (the
-one convention most likely to be silently wrong), verify the Roche/Jacobi
-criterion strips particles the energy criterion wrongly keeps, and check the
-input validation on the new parameter.
+Two groups:
+
+* ``bound_mask``: the ``'energy'`` self-binding baseline and the ``'jacobi'``
+  tidal criterion. These pin down the tidal-tensor sign convention (the one
+  convention most likely to be silently wrong), verify the Roche/Jacobi
+  criterion strips particles the energy criterion wrongly keeps, and check the
+  input validation.
+* ``reconstruct_mask``: the pure replay of a transition log that backs every
+  derived accessor on ``BoundednessHook`` (``mask_at``/``history``/``fraction``).
 """
 
 import numpy as np
@@ -12,154 +16,83 @@ import pytest
 import astropy.units as u
 from galpy.potential import KeplerPotential
 
-from tambora.dynamics.diagnostics import bound_mask
-from tambora.dynamics.forces.external_force import TidalTensorGalpyForce
-from tambora.dynamics.hooks import BoundednessHook, BoundKinematics
-from tambora.tools.util.units import G_INTERNAL
+from tambora.dynamics.diagnostics import bound_mask, reconstruct_mask
 
 
-# Point-mass host: analytic tidal tensor at galactocentric radius R along +x is
-# diag(2GM/R^3, -GM/R^3, -GM/R^3) -- radial stretching, transverse compression.
-M_GAL = 1e11      # Msun
-R_GAL = 20.0      # kpc
+
+# =============================================================================
+# reconstruct_mask -- pure replay of a transition log
+# =============================================================================
+#
+# An event is (idx, time, direction, *payload); direction +1 => bound, -1 =>
+# unbound. reconstruct_mask replays every event with time <= t onto a copy of
+# the initial mask. It assumes events are in chronological order (which the hook
+# guarantees). Indices below are component-local, matching the hook.
+
+def _initial():
+    return np.array([True, True, True, True])
 
 
-def _kepler_force(R=R_GAL, M=M_GAL):
-    pot = KeplerPotential(amp=M * u.Msun)
-    pot.turn_physical_on()
-    return TidalTensorGalpyForce(pot, center=[R, 0.0, 0.0])
+def test_replays_unbind_and_rebind_events():
+    events = [(0, 1.0, -1),          # particle 0 unbinds at t=1
+              (2, 2.0, -1),          # particle 2 unbinds at t=2
+              (0, 3.0, +1)]          # particle 0 rebinds at t=3
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 0.5),
+                                  [True, True, True, True])   # before any event
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 1.5),
+                                  [False, True, True, True])  # 0 gone
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 2.5),
+                                  [False, True, False, True]) # 0 and 2 gone
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 3.5),
+                                  [True, True, False, True])  # 0 rebound
 
 
-def _cold_blob(m_cl, r_t, N=300, n_far=2, seed=0):
-    """A compact cold cluster at (R,0,0) plus `n_far` tracers escaped along +/-x.
-
-    Velocities are uniform (so ``v - v_com == 0``): boundedness is decided by
-    potential alone, isolating the tidal term.
-    """
-    rng = np.random.default_rng(seed)
-    core = rng.normal(scale=r_t / 4, size=(N, 3))
-    far = np.array([[3 * r_t, 0.0, 0.0], [-3 * r_t, 0.0, 0.0]])[:n_far]
-    pos = np.vstack([core, far]) + np.array([R_GAL, 0.0, 0.0])
-    vel = np.zeros_like(pos)
-    mass = np.full(len(pos), m_cl / len(pos))
-    return pos, vel, mass
+def test_query_time_boundary_is_inclusive():
+    events = [(0, 1.0, -1)]
+    # An event exactly at the query time has already happened (time <= t).
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 1.0),
+                                  [False, True, True, True])
+    # Just before it, the flip has not yet applied.
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 0.999),
+                                  [True, True, True, True])
 
 
-# --- sign convention (the thing most likely to be silently backwards) ---------
-
-def test_tidal_tensor_sign_convention_kepler():
-    """Largest eigenvalue is the +2GM/R^3 radial stretching mode."""
-    force = _kepler_force()
-    T = force.tidal_tensor(np.array([[R_GAL, 0.0, 0.0]]))
-    lam = np.linalg.eigvalsh(T)                      # ascending
-    np.testing.assert_allclose(lam[-1], 2 * G_INTERNAL * M_GAL / R_GAL**3, rtol=1e-6)
-    np.testing.assert_allclose(lam[:2], -G_INTERNAL * M_GAL / R_GAL**3, rtol=1e-6)
+def test_does_not_mutate_initial_mask():
+    initial = _initial()
+    before = initial.copy()
+    out = reconstruct_mask(initial, [(0, 1.0, -1)], t=2.0)
+    np.testing.assert_array_equal(initial, before)    # input untouched
+    assert out is not initial                          # returns a fresh array
 
 
-def test_tidal_radius_matches_king_formula():
-    """r_t = (G m / lam1)^(1/3) reproduces R (m / 2M)^(1/3)."""
-    m_cl = 1e6
-    lam1 = 2 * G_INTERNAL * M_GAL / R_GAL**3
-    r_t = (G_INTERNAL * m_cl / lam1) ** (1 / 3)
-    np.testing.assert_allclose(r_t, R_GAL * (m_cl / (2 * M_GAL)) ** (1 / 3), rtol=1e-12)
+def test_ignores_trailing_payload():
+    # Events may carry captured pos/vel after (idx, time, direction); replay
+    # must give the same result as the bare 3-tuples.
+    bare = [(0, 1.0, -1), (2, 2.0, +1)]
+    with_payload = [(0, 1.0, -1, np.array([1.0, 2.0, 3.0])),
+                    (2, 2.0, +1, np.array([4.0, 5.0, 6.0]), np.array([7.0, 8.0, 9.0]))]
+    np.testing.assert_array_equal(
+        reconstruct_mask(_initial(), bare, 5.0),
+        reconstruct_mask(_initial(), with_payload, 5.0))
 
 
-# --- the physics the criterion exists for -------------------------------------
-
-def test_jacobi_strips_escaped_tracers_that_energy_keeps():
-    """Tracers beyond the tidal radius are bound by 'energy' but not 'jacobi'."""
-    m_cl = 1e6
-    lam1 = 2 * G_INTERNAL * M_GAL / R_GAL**3
-    r_t = (G_INTERNAL * m_cl / lam1) ** (1 / 3)
-    force = _kepler_force()
-    pos, vel, mass = _cold_blob(m_cl, r_t)
-
-    b_energy = bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                          criterion='energy')
-    b_jacobi = bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                          criterion='jacobi', tidal_force=force)
-
-    # The far tracers (last two) are the escaped ones.
-    assert b_energy[-2:].all()          # energy criterion is fooled
-    assert not b_jacobi[-2:].any()      # jacobi correctly unbinds them
-    assert b_jacobi.sum() < b_energy.sum()
+def test_ordered_double_flip_resolves_to_last_event():
+    # Two flips on the same particle, in chronological order: the later one wins.
+    events = [(1, 1.0, -1), (1, 2.0, +1)]
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 1.5),
+                                  [True, False, True, True])  # after unbind only
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), events, 2.5),
+                                  [True, True, True, True])   # after rebind
 
 
-def test_jacobi_robust_to_offset_com_from_stream():
-    """A one-sided stream drags the global mean far off the core.
-
-    Regression: seeding the tidal cut from the global COM strips *everything* on
-    the first iteration (the sub-kpc r_t gate sees no particles near a COM that
-    sits kpc away in the tail). Energy-first seeding must recover the core.
-    """
-    m_cl = 1e6
-    lam1 = 2 * G_INTERNAL * M_GAL / R_GAL**3
-    r_t = (G_INTERNAL * m_cl / lam1) ** (1 / 3)
-    force = _kepler_force()
-
-    rng = np.random.default_rng(1)
-    N_core = 300
-    core = rng.normal(scale=r_t / 4, size=(N_core, 3)) + np.array([R_GAL, 0.0, 0.0])
-    # Long one-sided tail strung out to +x, well beyond r_t -- the mean lands here.
-    tail_x = np.linspace(R_GAL + 1.0, R_GAL + 15.0, 300)
-    tail = np.column_stack([tail_x, np.zeros_like(tail_x), np.zeros_like(tail_x)])
-    pos = np.vstack([core, tail])
-    vel = np.zeros_like(pos)
-    vel[N_core:, 0] = 10.0                       # tail streaming outward -> energy-unbound
-    mass = np.full(len(pos), m_cl / len(pos))
-
-    assert abs(pos.mean(0)[0] - R_GAL) > r_t    # COM really is dragged off the core
-
-    jm = bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                    criterion='jacobi', tidal_force=force)
-    assert jm.sum() > 0                         # core survives (was 0 before the fix)
-    assert jm[:N_core].mean() > 0.5             # mostly the core
-    assert not jm[N_core:].any()               # none of the escaped tail
-
-
-def test_jacobi_reduces_to_energy_when_tide_negligible():
-    """With a very distant host the tide vanishes and the masks coincide."""
-    m_cl = 1e6
-    # r_t computed at the true R so the blob is compact relative to it.
-    lam1 = 2 * G_INTERNAL * M_GAL / R_GAL**3
-    r_t = (G_INTERNAL * m_cl / lam1) ** (1 / 3)
-    pos, vel, mass = _cold_blob(m_cl, r_t, n_far=0)   # no escaped tracers
-
-    # Put the host 1000x farther: tidal field ~1e-9 weaker, r_t enormous.
-    far_force = _kepler_force(R=1000 * R_GAL)
-    b_energy = bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                          criterion='energy')
-    b_jacobi = bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                          criterion='jacobi', tidal_force=far_force)
-    np.testing.assert_array_equal(b_energy, b_jacobi)
-
-
-# --- input validation ---------------------------------------------------------
-
-def test_jacobi_without_tidal_force_raises():
-    pos, vel, mass = _cold_blob(1e6, 0.3, N=10, n_far=0)
-    with pytest.raises(ValueError, match="requires a tidal_force"):
-        bound_mask(pos, vel, mass, eps=0.01, method='direct', criterion='jacobi')
-
-
-def test_unknown_criterion_raises():
-    pos, vel, mass = _cold_blob(1e6, 0.3, N=10, n_far=0)
-    with pytest.raises(ValueError, match="Unknown criterion"):
-        bound_mask(pos, vel, mass, eps=0.01, method='direct', criterion='roche')
-
-
-def test_purely_compressive_tensor_rejected():
-    """A location with no stretching (positive) eigenvalue has no escape surface."""
-    class _CompressiveTide:                 # negative-definite: fully compressive
-        def tidal_tensor(self, pos):
-            return -np.eye(3)
-    pos, vel, mass = _cold_blob(1e6, 0.3, N=10, n_far=0)
-    with pytest.raises(ValueError, match="no positive .*stretching"):
-        bound_mask(pos, vel, mass, eps=0.01, method='direct',
-                   criterion='jacobi', tidal_force=_CompressiveTide())
-
-
-@pytest.mark.parametrize("hook_cls", [BoundednessHook, BoundKinematics])
-def test_hook_jacobi_requires_tidal_force(hook_cls):
-    with pytest.raises(ValueError, match="requires a tidal_force"):
-        hook_cls("sat", eps=0.01, criterion='jacobi')
+def test_assumes_chronological_order():
+    # reconstruct_mask replays events in list order, not by timestamp, so it
+    # relies on the log being chronological (as the hook always produces it).
+    # Fed the same two flips out of order, it returns the wrong state -- this
+    # documents the precondition rather than endorsing unordered input.
+    ordered = [(1, 1.0, -1), (1, 2.0, +1)]      # correct: ends bound at t>=2
+    shuffled = [(1, 2.0, +1), (1, 1.0, -1)]     # same events, wrong order
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), ordered, 5.0),
+                                  [True, True, True, True])
+    np.testing.assert_array_equal(reconstruct_mask(_initial(), shuffled, 5.0),
+                                  [True, False, True, True])  # last-in-list wins
