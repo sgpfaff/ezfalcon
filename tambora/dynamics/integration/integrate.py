@@ -109,7 +109,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
                                     self_acc=self_acc0, self_pot=self_pot0,
                                     conserv_ext_acc=None, base_ext_acc=None, step=0)
-        _fire(hooks, state, initial_result, 0, steps_per_output, t0, dt)
+        _fire(hooks, state, initial_result, 0, steps_per_output)
 
     for step, t in enumerate(pbar, start=1):
         step_result = integrator.step(current_pos, current_vel, mass, current_t, dt,
@@ -121,7 +121,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             # flow into the snapshot. _fire returns whether the state was mutated
             # ("dirtied") -- the seam for recomputing self-gravity before
             # recording once mutating hooks are supported. Always False today.
-            _fire(hooks, state, step_result, step, steps_per_output, current_t, dt)
+            _fire(hooks, state, step_result, step, steps_per_output)
         if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
             positions[i_out] = step_result.pos.copy()
             velocities[i_out] = step_result.vel.copy()
@@ -134,7 +134,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     return positions, velocities, ts_out, self_gravity_acc, self_gravity_pot
 
 
-def _fire(hooks, state, result, step, steps_per_output, t, dt):
+def _fire(hooks, state, result, step, steps_per_output):
     """
     Run any hooks whose cadence is due at this step.
 
@@ -148,7 +148,7 @@ def _fire(hooks, state, result, step, steps_per_output, t, dt):
         True if a mutating hook ran (the state is now "dirty"). Always False
         while hooks are read-only.
     """
-    due = [hook for hook, cadence in hooks if cadence.due(step, steps_per_output, t, dt)]
+    due = [hook for hook, cadence in hooks if cadence.due(step, steps_per_output)]
     if not due:
         return False
     state._update(result)

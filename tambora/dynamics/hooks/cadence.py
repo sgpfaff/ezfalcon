@@ -7,7 +7,7 @@ class Cadence(ABC):
     """
 
     @abstractmethod
-    def due(self, step: int, steps_per_output: int, t: float, dt: float) -> bool:
+    def due(self, step: int, steps_per_output: int) -> bool:
         """
         Determine whether to output data at the given step.
 
@@ -17,10 +17,6 @@ class Cadence(ABC):
             The current integration step.
         steps_per_output : int
             The number of steps between outputs.
-        t : float
-            The current simulation time.
-        dt : float
-            The timestep size.
 
         Returns
         -------
@@ -30,18 +26,18 @@ class Cadence(ABC):
         ...
 
 class EveryStep(Cadence):
-    def due(self, step, steps_per_output, t, dt): return True
+    def due(self, step, steps_per_output): return True
 
 class EveryNSteps(Cadence):
     def __init__(self, n): self.n = n
-    def due(self, step, steps_per_output, t, dt): return step % self.n == 0
+    def due(self, step, steps_per_output): return step % self.n == 0
 
-class EveryOutput(Cadence):                      
-    # default — aligned with snapshots
-    def due(self, step, steps_per_output, t, dt): return step % steps_per_output == 0
+class EveryOutput(Cadence):
+    # default; aligned with snapshots
+    def due(self, step, steps_per_output): return step % steps_per_output == 0
 
 class EveryNOutputs(Cadence):
     def __init__(self, n): self.n = n
-    def due(self, step, steps_per_output, t, dt): return step % (self.n * steps_per_output) == 0
+    def due(self, step, steps_per_output): return step % (self.n * steps_per_output) == 0
 
 
