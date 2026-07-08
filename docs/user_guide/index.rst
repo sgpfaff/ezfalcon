@@ -43,6 +43,12 @@ All About Simulations
       :link-type: doc
 
       Configure the integrator and launch a run.
+   
+   .. grid-item-card:: Hooks
+      :link: hooks
+      :link-type: doc
+
+      Observe and record quantities during a run  at a cadence you control, independent of the saved snapshots.
 
    .. grid-item-card:: Integrators
       :link: integrators
@@ -146,6 +152,7 @@ Tools & Interoperability
    adding_particles_to_a_sim
    adding_external_forces_to_a_sim
    running_a_simulation
+   hooks
    integrators
    simulation_outputs
    evaluating_properties_of_multiple_sets_of_particles
