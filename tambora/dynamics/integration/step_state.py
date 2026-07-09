@@ -60,6 +60,11 @@ class StepState:
     @property
     def t(self): return self._result.t
 
+    @property
+    def mass(self):
+        """Live particle masses. A property (time-independent), mirroring ``Sim.mass``."""
+        return self._result.mass[self._sl]
+
     # -- reporting: push display fields to the run's progress bar --
     def report(self, **fields):
         '''
@@ -84,24 +89,95 @@ class StepState:
         raise AttributeError(f"StepState has no attribute or component named {name!r}")
     
     # -- kinematics --
-    def pos(self):  return self._result.pos[self._sl]
-    def vel(self):  return self._result.vel[self._sl]
-    def mass(self): return self._result.mass[self._sl]
-    def x(self):    return self.pos()[..., 0]
-    def y(self):    return self.pos()[..., 1]
-    def z(self):    return self.pos()[..., 2]
-    def vx(self):   return self.vel()[..., 0]
-    def vy(self):   return self.vel()[..., 1]
-    def vz(self):   return self.vel()[..., 2]
-    def r(self):    return np.linalg.norm(self.pos(), axis=-1)
-    def KE(self):   return 0.5 * self.mass() * np.sum(self.vel()**2, axis=-1)
+    def pos(self):  
+        """Live (x, y, z) positions."""
+        return self._result.pos[self._sl]
+    def vel(self):
+        """Live (vx, vy, vz)."""
+        return self._result.vel[self._sl]
+    def x(self):
+        """x-component of live positions."""
+        return self.pos()[..., 0]
+    def y(self):  
+        """y-component of live positions."""  
+        return self.pos()[..., 1]
+    def z(self):    
+        """z-component of live positions."""
+        return self.pos()[..., 2]
+    def vx(self):   
+        """x-component of live velocities."""
+        return self.vel()[..., 0]
+    def vy(self):   
+        """y-component of live velocities."""
+        return self.vel()[..., 1]
+    def vz(self):   
+        """z-component of live velocities."""
+        return self.vel()[..., 2]
+    def r(self):
+        """Live radius of particles."""
+        return np.linalg.norm(self.pos(), axis=-1)
+    def KE(self):   
+        """Live kinetic energy of particles."""
+        return 0.5 * self.mass * np.sum(self.vel()**2, axis=-1)
 
-    # -- accelerations -- uses integrator has already computed
-    def self_gravity(self):
-        a = self._result.self_acc
-        return np.zeros_like(self.pos()) if a is None else a[self._sl]
+    # -- self-gravity: acceleration & potential share one computation --
+    def _self_gravity(self, include_all_components, solver):
+        '''(acc, pot, out_slice) for this view under *solver*, cached for the step.
+
+        Fast path: all components with the run's solver; returns the step's
+        precomputed ``(self_acc, self_pot)``. Any other combination recomputes
+        once via the solver's one-pass ``acc_and_potential`` and caches the pair,
+        so ``self_gravity`` and ``self_potential`` never compute it twice.
+        '''
+        run_solver = self._ctx.self_gravity_force
+        solver = solver if solver is not None else run_solver
+        sl = self._sl
+        if include_all_components:
+            if solver is run_solver:
+                return self._result.self_acc, self._result.self_pot, sl
+            key = ("sg_all", id(solver))
+            if key not in self._cache:
+                self._cache[key] = solver.acc_and_potential(
+                    self._result.pos, self._result.mass)
+            acc, pot = self._cache[key]
+            return acc, pot, sl
+        key = ("sg_iso", id(solver), (sl.start, sl.stop, sl.step))
+        if key not in self._cache:
+            self._cache[key] = solver.acc_and_potential(self.pos(), self.mass)
+        acc, pot = self._cache[key]
+        return acc, pot, slice(None)
+
+    # -- accelerations -- reuse what the integrator already computed
+    def self_gravity(self, include_all_components, solver=None):
+        '''
+        Self-gravitational acceleration on this view's particles [internal units].
+
+        Mirrors ``Component.self_gravity``.
+
+        Parameters
+        ----------
+        include_all_components : bool
+            If True, the particles' acceleration within the *whole-system*
+            self-gravity field. If False, the *isolated* self-gravity of this
+            view's particles alone. There is deliberately no default: on a
+            component view the two meanings differ, so the choice must be explicit.
+        solver : SelfGravityForce, optional
+            Configured self-gravity solver to compute with. If None (default),
+            the run's own solver, in which case the value is read from the step's precomputed acceleration. Pass a solver
+            instance (e.g. ``DirectSummationGravity(eps=...)``) to use a different
+            method/softening than the integration did.
+
+        Notes
+        -----
+        The fast path: ``include_all_components=True`` with the run's solver;
+        reuses ``StepResult.self_acc`` and does no work. Every other combination
+        recomputes once per step and caches the result for the step's lifetime.
+        '''
+        acc, _, sl = self._self_gravity(include_all_components, solver)
+        return acc[sl]
     
     def external_acc(self):
+        '''Live (x, y, z) acceleration due to external forces.'''
         c, b = self._result.conserv_ext_acc, self._result.base_ext_acc
         out = 0.0
         if c is not None: out = out + c[self._sl]
@@ -109,33 +185,74 @@ class StepState:
         return out
     
     # -- potentials --
-    def self_potential(self):
-        phi = self._result.self_pot
-        if phi is None:
-            phi = self._cache.setdefault(
-                "self_pot",
-                self._ctx.self_gravity_force.acc_and_potential(
-                    self._result.pos, self._result.mass)[1])
-        return self.mass() * phi[self._sl]
+    def self_potential(self, include_all_components, solver=None):
+        '''
+        Self-gravitational potential energy of this view's particles [internal units].
+
+        Mirrors ``Component.self_potential``.
+
+        Parameters
+        ----------
+        include_all_components : bool
+            If True, the particles' potential within the *whole-system*
+            self-gravity field. If False, the *isolated* self-potential of this
+            view's particles alone. There is deliberately no default: on a
+            component view the two meanings differ, so the choice must be explicit.
+        solver : SelfGravityForce, optional
+            Configured self-gravity solver to compute with. If None (default),
+            the run's own solver, in which case the value is read from the step's precomputed potential. Pass a solver
+            instance (e.g. ``DirectSummationGravity(eps=...)``) to use a different
+            method/softening than the integration did.
+
+        Notes
+        -----
+        The fast path: ``include_all_components=True`` with the run's solver;
+        reuses ``StepResult.self_pot`` and does no work. Every other combination
+        recomputes once per step and caches the result for the step's lifetime.
+        '''
+        _, phi, sl = self._self_gravity(include_all_components, solver)
+        return self.mass * phi[sl]
     
     def external_pot(self):
+        '''Live potential from external forces.'''
         # lazy compute on full array and slice after
         phi = self._cache.get("ext_pot")
         if phi is None:
             phi = self._ctx.conserv_ext_force.potential(
                 self._result.pos, self._result.mass, self._result.t)
             self._cache["ext_pot"] = phi
-        return self.mass() * phi[self._sl]
+        return self.mass * phi[self._sl]
     
-    def PE(self):       return self.self_potential() + self.external_pot()
-    def energy(self):   return self.KE() + self.PE()
-    def system_energy(self):
+    def PE(self, include_all_components, solver=None):
+        """Live potential energy (self + external) of this view's particles.
+
+        ``include_all_components`` (required) and ``solver`` are forwarded to
+        ``self_potential`` (which see); the external potential is always the full
+        external field, independent of those choices.
+        """
+        return self.self_potential(include_all_components, solver) + self.external_pot()
+
+    def energy(self, include_all_components, solver=None):
+        """Live total energy (KE + PE) of this view's particles.
+
+        ``include_all_components`` is required and forwarded to ``PE`` -- on a
+        component view its two meanings differ, so the choice must be explicit.
+        """
+        return self.KE() + self.PE(include_all_components, solver)
+
+    def system_energy(self, solver=None):
+        """Live energy of the entire system [internal units].
+
+        A whole-system total, so ``include_all_components`` does not apply; pass
+        ``solver`` to evaluate the self-potential with a non-run solver.
+        """
         return (np.sum(self.KE())
-                + 0.5 * np.sum(self.self_potential())
+                + 0.5 * np.sum(self.self_potential(include_all_components=True, solver=solver))
                 + np.sum(self.external_pot()))
 
     # -- boundedness (iterative unbinding), cached per step --
-    def bound_mask(self, component=None, *, eps, method='falcON', theta=0.6, max_iter=50):
+    def bound_mask(self, component=None, *, eps, method='falcON', theta=0.6, max_iter=50,
+                   criterion='energy', tidal_force=None):
         '''
         Boolean mask of self-bound particles, via iterative unbinding.
 
@@ -152,15 +269,21 @@ class StepState:
             Softening length [kpc]. Required.
         method, theta, max_iter
             Passed through to the iterative unbinding solver.
+        criterion : str, optional
+            ``'energy'`` (default) or ``'jacobi'`` (requires ``tidal_force``).
+        tidal_force : TidalTensorGalpyForce, optional
+            Tidal-tensor source for ``criterion='jacobi'``.
         '''
         from ..diagnostics import bound_mask as _bound_mask
         c = self if component is None else self.component(component)
         sl = c._sl
         # key by the resolved slice (not the component name) so a whole-system
         # call and a component call can never collide in the shared cache.
-        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter)
+        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter,
+               criterion, id(tidal_force))
         if key not in self._cache:
-            self._cache[key] = _bound_mask(c.pos(), c.vel(), c.mass(),
+            self._cache[key] = _bound_mask(c.pos(), c.vel(), c.mass,
                                            eps=eps, method=method, theta=theta,
-                                           max_iter=max_iter)
+                                           max_iter=max_iter, criterion=criterion,
+                                           tidal_force=tidal_force)
         return self._cache[key]
