@@ -16,7 +16,8 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
             return_self_gravity_pot: bool = True,
             return_self_gravity_acc: bool = True,
             slices: Optional[dict] = None,
-            hooks: tuple = ()):
+            hooks: tuple = (),
+            progress: bool = True):
     '''
     Integrate particle trajectories optionally under 
     influence of self-gravity and external forces.
@@ -99,7 +100,7 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
     # Hook plumbing: one reusable view over the live state, refreshed each fire.
     # The progress bar is created up front so hooks can report to it (via
     # state.report) from the t0 fire onwards.
-    pbar = tqdm(ts_integrate[1:])
+    pbar = tqdm(ts_integrate[1:], disable=not progress)
     ctx = StepContext(slices or {}, self_gravity_force, conserv_ext_force,
                       base_ext_force, progress=_Progress(pbar))
     state = StepState(None, ctx)
@@ -117,10 +118,6 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
         step_result.step = step
         current_pos, current_vel, current_t = step_result.pos, step_result.vel, step_result.t
         if hooks:
-            # Hooks fire before recording so a (future) mutating hook's changes
-            # flow into the snapshot. _fire returns whether the state was mutated
-            # ("dirtied") -- the seam for recomputing self-gravity before
-            # recording once mutating hooks are supported. Always False today.
             _fire(hooks, state, step_result, step, steps_per_output)
         if step % steps_per_output == 0 and i_out < nsnaps: # recording snapshot
             positions[i_out] = step_result.pos.copy()
@@ -138,27 +135,15 @@ def _fire(hooks, state, result, step, steps_per_output):
     """
     Run any hooks whose cadence is due at this step.
 
-    Refreshes the shared ``state`` view once (only when something fires),
-    orders mutating hooks before observing ones, and reports whether the state
-    was mutated so the caller can recompute self-gravity if needed.
-
-    Returns
-    -------
-    bool
-        True if a mutating hook ran (the state is now "dirty"). Always False
-        while hooks are read-only.
+    Refreshes the shared ``state`` view once (only when something fires), then
+    calls each due hook on it.
     """
     due = [hook for hook, cadence in hooks if cadence.due(step, steps_per_output)]
     if not due:
-        return False
+        return
     state._update(result)
-    # Mutators first, observers after, so observers see the corrected state.
-    due.sort(key=lambda hook: not getattr(hook, "mutates", False))
-    dirtied = False
     for hook in due:
         hook(state)
-        dirtied |= getattr(hook, "mutates", False)
-    return dirtied
 
 
 def _check_dt_dt_out(dt, dt_out, t0, t_end):
