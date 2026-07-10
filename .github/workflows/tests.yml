@@ -128,4 +128,4 @@ jobs:
       - name: Run galpy-specific tests
         working-directory: /tmp
         run: |
-          python -m pytest --pyargs tambora.tests.test_galpy_bridge tambora.tests.test_galpy_tools -o "addopts=" -q
+          python -m pytest --pyargs tambora.tests.tools.util.test_galpy_bridge tambora.tests.tools.test_galpy_tools -o "addopts=" -q
