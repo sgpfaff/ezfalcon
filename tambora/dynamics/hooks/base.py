@@ -32,6 +32,21 @@ class Hook(ABC):
         """
         ...
 
+    def _dedup_key(self):
+        """
+        Identity used by ``Sim.add_hook`` to reject duplicate registrations.
+
+        Return a hashable/comparable key built from the hook's *meaningful
+        configuration*. These are the flags that make two instances mean different
+        things (e.g. ``component``, ``eps``, an output ``path``, an index set).
+        Two hooks with equal, non-``None`` keys are treated as duplicates.
+        Never include mutable/result state (accumulated logs, sampled times).
+
+        The default is ``None``: opt out of dedup entirely (any number of
+        instances allowed). 
+        """
+        return None
+
 
 class EnergyMonitor(Hook):
     """
@@ -48,6 +63,10 @@ class EnergyMonitor(Hook):
         self.E0 = None
         self.t = []
         self.dE = []
+
+    def _dedup_key(self):
+        # Config-less whole-system diagnostic: at most one per simulation.
+        return (type(self),)
 
     def __call__(self, state: StepState):
         E = state.system_energy()

@@ -15,6 +15,16 @@ from typing import Optional
 from ._decorators import _USE_CACHED_DEFAULT, _resolve_use_cached, _resolve_t
 
 
+def _hook_dedup_key(hook):
+    """A hook's configuration-identity key, or ``None`` if it opts out of dedup.
+
+    Bare callables (e.g. a plain function) have no ``_dedup_key`` and so always
+    opt out; ``Hook`` subclasses return ``None`` by default until they override.
+    """
+    getter = getattr(hook, "_dedup_key", None)
+    return getter() if callable(getter) else None
+
+
 class Sim:
     """
     Self-gravitating N-body simulation.
@@ -445,13 +455,43 @@ class Sim:
         ------
         RuntimeError
             If the simulation has already been run.
+        TypeError
+            If ``hook`` is not callable, or the resolved ``cadence`` (supplied or
+            from the hook's ``default_cadence``) is not a ``Cadence`` instance.
+        ValueError
+            If this exact hook instance has already been registered, or if an
+            equivalently-configured hook is already registered (see the hook's
+            ``_dedup_key``).
         '''
-        from ..dynamics.hooks import EveryOutput
+        from ..dynamics.hooks import EveryOutput, Cadence
         if self._has_run:
             raise RuntimeError("Cannot add hooks after run()")
+        if not callable(hook):
+            raise TypeError(f"hook must be callable, got {type(hook).__name__!r}.")
+        if any(existing is hook for existing, _ in self._hooks):
+            raise ValueError("This hook instance is already registered. Construct a "
+                             "separate instance to run it more than once.")
+        key = _hook_dedup_key(hook)
+        if key is not None and any(_hook_dedup_key(h) == key for h, _ in self._hooks):
+            # two hooks with equal non-None keys are duplicates.
+            raise ValueError(
+                f"An equivalently-configured {type(hook).__name__} is already "
+                f"registered. Change its configuration, or reuse the existing hook.")
         if cadence is None:
             cadence = getattr(hook, "default_cadence", None) or EveryOutput()
+        if not isinstance(cadence, Cadence):
+            raise TypeError(f"cadence must be a Cadence instance, got "
+                            f"{type(cadence).__name__!r}.")
         self._hooks.append((hook, cadence))
+
+    @property
+    def hooks(self):
+        '''Registered ``(hook, cadence)`` pairs, in registration order.
+
+        Read-only: returns a shallow copy, so the returned sequence cannot be
+        used to add or remove hooks. Use ``add_hook`` for that.
+        '''
+        return tuple(self._hooks)
 
     # --- Position Accessors -----------------------------------------------------------------
 
