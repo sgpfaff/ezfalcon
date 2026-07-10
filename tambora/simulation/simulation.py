@@ -329,7 +329,8 @@ class Sim:
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
             method: Optional[str] = 'auto', integration_method: str = 'leapfrog',
-            cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True, 
+            cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
+            progress: bool = True,
             **kwargs):
         """
         Run the simulation to *t_end* [Gyr].
@@ -413,6 +414,7 @@ class Sim:
                     return_self_gravity_acc = cache_self_gravity_acc,
                     slices = self._slices,
                     hooks = self._hooks,
+                    progress = progress,
                 )
         self._has_run = True
 
@@ -441,18 +443,12 @@ class Sim:
 
         Raises
         ------
-        NotImplementedError
-            If the hook declares ``mutates = True``. Mutating hooks are not yet
-            supported.
         RuntimeError
             If the simulation has already been run.
         '''
         from ..dynamics.hooks import EveryOutput
         if self._has_run:
             raise RuntimeError("Cannot add hooks after run()")
-        if getattr(hook, "mutates", False):
-            raise NotImplementedError(
-                "Mutating hooks are not yet supported; only observing hooks may be added.")
         if cadence is None:
             cadence = getattr(hook, "default_cadence", None) or EveryOutput()
         self._hooks.append((hook, cadence))
@@ -1376,7 +1372,8 @@ class Sim:
 
     # --- Boundedness -----------------------------------------------------------------
 
-    def boundedness(self, component, t=-1, eps=None, method='falcON', theta=0.6, max_iter=50):
+    def boundedness(self, component, t=-1, eps=None, method='falcON', theta=0.6, max_iter=50,
+                    criterion='energy', tidal_force=None):
         '''
         Boolean mask of self-bound particles in *component* at time *t*.
 
@@ -1399,6 +1396,11 @@ class Sim:
             falcON opening angle (ignored by the direct methods).
         max_iter : int, optional
             Maximum unbinding iterations.
+        criterion : str, optional
+            ``'energy'`` (default) for self-binding energy, or ``'jacobi'`` for
+            the tidal Roche/Jacobi criterion (requires ``tidal_force``).
+        tidal_force : TidalTensorGalpyForce, optional
+            Tidal-tensor source for ``criterion='jacobi'``.
 
         Returns
         -------
@@ -1408,7 +1410,8 @@ class Sim:
         Raises
         ------
         ValueError
-            If *eps* is not provided or *component* is unknown.
+            If *eps* is not provided, *component* is unknown, or
+            ``criterion='jacobi'`` without a ``tidal_force``.
         '''
         from ..dynamics.diagnostics import bound_mask
         if eps is None:
@@ -1418,7 +1421,8 @@ class Sim:
         ti = self._ti(t, vectorized=False)
         sl = self._slices[component]
         return bound_mask(self._positions[ti, sl], self._velocities[ti, sl], self._mass[sl],
-                          eps=eps, method=method, theta=theta, max_iter=max_iter)
+                          eps=eps, method=method, theta=theta, max_iter=max_iter,
+                          criterion=criterion, tidal_force=tidal_force)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 

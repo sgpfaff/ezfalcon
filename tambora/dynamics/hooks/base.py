@@ -16,14 +16,9 @@ class Hook(ABC):
     ----------
     default_cadence : Cadence
         Cadence used if none is supplied to ``Sim.add_hook``.
-    mutates : bool
-        Whether the hook writes to the simulation state. Mutating hooks are not
-        yet supported; this flag exists so the runner can recognise them and so
-        ``Sim.add_hook`` can reject them cleanly.
     """
 
     default_cadence = EveryOutput()
-    mutates = False
 
     @abstractmethod
     def __call__(self, state: StepState):
