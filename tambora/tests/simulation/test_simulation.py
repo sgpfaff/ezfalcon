@@ -8,6 +8,8 @@ import numpy as np
 from tambora.tools.util import G_INTERNAL
 from tambora.tools.util.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity
+from tambora.dynamics.hooks import (Hook, EnergyMonitor, BoundednessHook,
+                                    EveryOutput, EveryNSteps, EveryNOutputs)
 import astropy.units as u
 
 
@@ -1938,3 +1940,190 @@ def test_external_acc_uses_physical_time():
     acc_time = sim.external_acc(1.0, return_internal=True)
 
     np.testing.assert_allclose(acc_idx, acc_time, rtol=1e-14)
+
+
+# --- add_hook ----------------------------------------------------------------------------------- #
+
+class _StubHook(Hook):
+    """Minimal concrete Hook carrying a distinctive default cadence.
+
+    The default (``EveryNSteps(7)``) is deliberately *not* ``EveryOutput`` so a
+    test can tell "used the hook's default" apart from "fell back to
+    ``EveryOutput()``" -- the two would be indistinguishable otherwise.
+    """
+    default_cadence = EveryNSteps(7)
+
+    def __call__(self, state):
+        pass
+
+
+class _BadCadenceHook(Hook):
+    """A hook whose ``default_cadence`` is not a Cadence, to test validation."""
+    default_cadence = "every step, please"      # not a Cadence instance
+
+    def __call__(self, state):
+        pass
+
+
+class _KeyedHook(Hook):
+    """A hook with a config-based ``_dedup_key``, to exercise identity dedup.
+
+    ``_StubHook`` (above) inherits the default ``_dedup_key`` -> ``None`` and so
+    opts out of dedup; this one declares an identity from its ``label``.
+    """
+    def __init__(self, label):
+        self.label = label
+
+    def _dedup_key(self):
+        return (type(self), self.label)
+
+    def __call__(self, state):
+        pass
+
+
+class TestAddHook:
+    """``Sim.add_hook``: cadence resolution, ordering, and the after-run guard.
+
+    ``add_hook`` only touches ``_hooks`` and ``_has_run``, so a bare ``Sim()``
+    (no particles) exercises every branch. Cadences define no ``__eq__``, so the
+    stored cadence is checked by identity (``is``) for objects passed in, and by
+    ``isinstance`` for the ``EveryOutput`` fallback.
+    """
+
+    def test_registers_hook_with_explicit_cadence(self):
+        sim = Sim()
+        hook, cad = _StubHook(), EveryNSteps(3)
+        sim.add_hook(hook, cad)
+        assert len(sim._hooks) == 1
+        stored_hook, stored_cad = sim._hooks[0]
+        assert stored_hook is hook
+        assert stored_cad is cad
+
+    def test_explicit_cadence_overrides_default(self):
+        sim = Sim()
+        hook, cad = _StubHook(), EveryNOutputs(2)
+        sim.add_hook(hook, cad)
+        # The explicit cadence wins over the hook's own default_cadence.
+        assert sim._hooks[0][1] is cad
+        assert sim._hooks[0][1] is not hook.default_cadence
+
+    def test_uses_hook_default_cadence_when_none_given(self):
+        sim = Sim()
+        hook = _StubHook()
+        sim.add_hook(hook)                      # no cadence supplied
+        assert sim._hooks[0][1] is hook.default_cadence
+
+    def test_bare_callable_falls_back_to_every_output(self):
+        sim = Sim()
+        hook = lambda state: None               # no default_cadence attribute
+        sim.add_hook(hook)
+        stored_hook, stored_cad = sim._hooks[0]
+        assert stored_hook is hook
+        assert isinstance(stored_cad, EveryOutput)
+
+    def test_registers_multiple_hooks_in_order(self):
+        sim = Sim()
+        h1, h2, h3 = _StubHook(), _StubHook(), _StubHook()
+        sim.add_hook(h1, EveryNSteps(1))
+        sim.add_hook(h2, EveryNSteps(2))
+        sim.add_hook(h3, EveryNSteps(3))
+        assert [h for h, _ in sim._hooks] == [h1, h2, h3]
+
+    def test_add_hook_after_run_raises(self):
+        sim = Sim()
+        sim._has_run = True                     # simulate a completed run
+        with pytest.raises(RuntimeError, match="Cannot add hooks after run()"):
+            sim.add_hook(_StubHook())
+
+    # -- input validation: fail fast at add_hook, not deep inside the run --
+
+    def test_rejects_non_callable_hook(self):
+        sim = Sim()
+        with pytest.raises(TypeError, match="hook must be callable"):
+            sim.add_hook(42)
+
+    def test_rejects_non_cadence_argument(self):
+        sim = Sim()
+        with pytest.raises(TypeError, match="cadence must be a Cadence"):
+            sim.add_hook(_StubHook(), "every step")
+
+    def test_rejects_invalid_default_cadence(self):
+        # A custom hook whose default_cadence is not a Cadence is caught at
+        # registration rather than surfacing as an AttributeError mid-run.
+        sim = Sim()
+        with pytest.raises(TypeError, match="cadence must be a Cadence"):
+            sim.add_hook(_BadCadenceHook())
+
+    # -- duplicate guard: same instance twice is almost always a mistake --
+
+    def test_rejects_duplicate_hook_instance(self):
+        sim = Sim()
+        hook = _StubHook()
+        sim.add_hook(hook)
+        with pytest.raises(ValueError, match="already registered"):
+            sim.add_hook(hook)
+
+    def test_allows_distinct_instances_of_keyless_hook(self):
+        # _StubHook opts out of dedup (default _dedup_key -> None), so two
+        # distinct instances are allowed.
+        sim = Sim()
+        sim.add_hook(_StubHook())
+        sim.add_hook(_StubHook())
+        assert len(sim._hooks) == 2
+
+    # -- configuration-identity dedup (via _dedup_key) --
+
+    def test_rejects_equivalently_configured_hook(self):
+        # Distinct instances with equal _dedup_key are duplicates.
+        sim = Sim()
+        sim.add_hook(_KeyedHook("sat"))
+        with pytest.raises(ValueError, match="equivalently-configured"):
+            sim.add_hook(_KeyedHook("sat"))
+
+    def test_allows_differently_configured_hooks(self):
+        sim = Sim()
+        sim.add_hook(_KeyedHook("sat"))
+        sim.add_hook(_KeyedHook("host"))        # different key -> allowed
+        assert len(sim._hooks) == 2
+
+    def test_rejects_second_energy_monitor(self):
+        # EnergyMonitor is config-less -> one per sim.
+        sim = Sim()
+        sim.add_hook(EnergyMonitor())
+        with pytest.raises(ValueError, match="equivalently-configured"):
+            sim.add_hook(EnergyMonitor())
+
+    def test_boundedness_hooks_dedup_by_full_config(self):
+        # Same component+config: duplicate. Different component: allowed
+        # (cases B and C from the design discussion).
+        sim = Sim()
+        sim.add_hook(BoundednessHook("sat", eps=0.01))
+        sim.add_hook(BoundednessHook("host", eps=0.01))     # different component
+        assert len(sim._hooks) == 2
+        with pytest.raises(ValueError, match="equivalently-configured"):
+            sim.add_hook(BoundednessHook("sat", eps=0.01))  # exact repeat
+
+    def test_boundedness_hooks_differ_by_eps(self):
+        sim = Sim()
+        sim.add_hook(BoundednessHook("sat", eps=0.01))
+        sim.add_hook(BoundednessHook("sat", eps=0.5))
+        assert len(sim._hooks) == 2
+
+    # -- hooks property: read-only introspection --
+
+    def test_hooks_property_returns_registered_pairs(self):
+        sim = Sim()
+        h1, c1 = _StubHook(), EveryNSteps(2)
+        h2, c2 = _StubHook(), EveryNOutputs(3)
+        sim.add_hook(h1, c1)
+        sim.add_hook(h2, c2)
+        assert sim.hooks == ((h1, c1), (h2, c2))
+        assert isinstance(sim.hooks, tuple)
+
+    def test_hooks_property_is_a_readonly_snapshot(self):
+        sim = Sim()
+        sim.add_hook(_StubHook())
+        snapshot = sim.hooks
+        sim.add_hook(_StubHook())               # mutate after snapshotting
+        assert len(snapshot) == 1               # snapshot is unaffected
+        assert sim.hooks is not sim._hooks      # not the live backing list

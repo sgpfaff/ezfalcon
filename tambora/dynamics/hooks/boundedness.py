@@ -35,9 +35,9 @@ def _bound_dispersion(vel, mass, mask):
 
 
 _REDUCTIONS = {
-    'com':        lambda c, mask: _bound_com(c.pos(), c.mass(), mask),
-    'com_vel':    lambda c, mask: _bound_com(c.vel(), c.mass(), mask),
-    'dispersion': lambda c, mask: _bound_dispersion(c.vel(), c.mass(), mask),
+    'com':        lambda c, mask: _bound_com(c.pos(), c.mass, mask),
+    'com_vel':    lambda c, mask: _bound_com(c.vel(), c.mass, mask),
+    'dispersion': lambda c, mask: _bound_dispersion(c.vel(), c.mass, mask),
 }
 
 
@@ -63,6 +63,10 @@ class BoundednessHook(Hook):
     method, theta, max_iter
         Passed to the iterative unbinding solver (must match across hooks to
         share the cached ``bound_mask``).
+    criterion : str, optional
+        ``'energy'`` (default) or ``'jacobi'`` (requires ``tidal_force``).
+    tidal_force : TidalTensorGalpyForce, optional
+        Tidal-tensor source for ``criterion='jacobi'``.
 
     Attributes
     ----------
@@ -78,7 +82,8 @@ class BoundednessHook(Hook):
     default_cadence = EveryOutput()
 
     def __init__(self, component, eps, track=(), capture_transitions=(),
-                 method='falcON', theta=0.6, max_iter=50):
+                 method='falcON', theta=0.6, max_iter=50,
+                 criterion='energy', tidal_force=None):
         for name in track:
             if name not in _REDUCTIONS:
                 raise ValueError(
@@ -87,6 +92,8 @@ class BoundednessHook(Hook):
             if name not in ('pos', 'vel'):
                 raise ValueError(
                     f"Unknown capture {name!r}. Available: ('pos', 'vel')")
+        if criterion == 'jacobi' and tidal_force is None:
+            raise ValueError("criterion='jacobi' requires a tidal_force.")
 
         self.component = component
         self.eps = eps
@@ -95,6 +102,8 @@ class BoundednessHook(Hook):
         self.method = method
         self.theta = theta
         self.max_iter = max_iter
+        self.criterion = criterion
+        self.tidal_force = tidal_force
 
         self.t = []
         self.initial_mask = None
@@ -103,10 +112,17 @@ class BoundednessHook(Hook):
         for name in self.track:                 # tracked reductions -> list attributes
             setattr(self, name, [])
 
+    def _dedup_key(self):
+        # Full intentional config: only an exactly-identical hook is a duplicate.
+        return (type(self), self.component, self.eps, self.track,
+                self.capture_transitions, self.method, self.theta, self.max_iter,
+                self.criterion, self.tidal_force)
+
     def __call__(self, state):
         c = state.component(self.component)
         mask = state.bound_mask(self.component, eps=self.eps, method=self.method,
-                                theta=self.theta, max_iter=self.max_iter)
+                                theta=self.theta, max_iter=self.max_iter,
+                                criterion=self.criterion, tidal_force=self.tidal_force)
         self.t.append(state.t)
 
         # transition log (always on -- essentially free once we have the mask)
@@ -180,20 +196,31 @@ class BoundKinematics(Hook):
 
     default_cadence = EveryOutput()
 
-    def __init__(self, component, eps, method='falcON', theta=0.6, max_iter=50):
+    def __init__(self, component, eps, method='falcON', theta=0.6, max_iter=50,
+                 criterion='energy', tidal_force=None):
+        if criterion == 'jacobi' and tidal_force is None:
+            raise ValueError("criterion='jacobi' requires a tidal_force.")
         self.component = component
         self.eps = eps
         self.method = method
         self.theta = theta
         self.max_iter = max_iter
+        self.criterion = criterion
+        self.tidal_force = tidal_force
         self.t = []
         self.pos = []
         self.vel = []
 
+    def _dedup_key(self):
+        # Full intentional config: only an exactly-identical hook is a duplicate.
+        return (type(self), self.component, self.eps, self.method, self.theta,
+                self.max_iter, self.criterion, self.tidal_force)
+
     def __call__(self, state):
         c = state.component(self.component)
         mask = state.bound_mask(self.component, eps=self.eps, method=self.method,
-                                theta=self.theta, max_iter=self.max_iter)
+                                theta=self.theta, max_iter=self.max_iter,
+                                criterion=self.criterion, tidal_force=self.tidal_force)
         self.t.append(state.t)
         self.pos.append(c.pos()[mask].copy())
         self.vel.append(c.vel()[mask].copy())
