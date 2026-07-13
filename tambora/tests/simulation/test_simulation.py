@@ -480,6 +480,77 @@ def test_add_external_pot_rejection():
     with pytest.raises(TypeError, match="External potential must be a galpy Potential object."):
         sim.add_external_pot(lambda pos, t: pos)
 
+# --- duplicate external forces / potentials --------------------------------------------------- #
+
+def _kepler_pot(amp=1e9):
+    from galpy.potential import KeplerPotential
+    p = KeplerPotential(amp=amp * u.Msun)
+    p.turn_physical_on()
+    return p
+
+
+def test_add_external_pot_rejects_same_object_twice():
+    # add_external_pot builds a fresh wrapper each call, so the two forces are
+    # distinct instances -- caught by the value key (they wrap the same pot).
+    sim = Sim()
+    pot = _kepler_pot()
+    sim.add_external_pot(pot)
+    with pytest.raises(ValueError, match="double-count"):
+        sim.add_external_pot(pot)
+
+
+def test_add_external_pot_rejects_value_equal_potential():
+    # Distinct objects, identical physics -> pickle-equal key -> duplicate.
+    sim = Sim()
+    sim.add_external_pot(_kepler_pot(1e9))
+    with pytest.raises(ValueError, match="double-count"):
+        sim.add_external_pot(_kepler_pot(1e9))
+
+
+def test_add_external_pot_allows_different_parameters():
+    # Same type and amplitude, different scale length: a genuinely different
+    # field, so both are kept (pickle captures every parameter).
+    from galpy.potential import NFWPotential
+
+    def nfw(a):
+        p = NFWPotential(amp=1e12 * u.Msun, a=a * u.kpc)
+        p.turn_physical_on()
+        return p
+
+    sim = Sim()
+    sim.add_external_pot(nfw(20))
+    sim.add_external_pot(nfw(10))
+    assert len(sim._conserv_ext_force.members) == 2
+
+
+def test_add_external_force_rejects_same_instance():
+    # Custom forces opt out of the value key, but the same-instance guard still
+    # catches adding one object twice.
+    sim = Sim()
+    f = CustomBaseForce()
+    sim.add_external_force(f)
+    with pytest.raises(ValueError, match="instance is already added"):
+        sim.add_external_force(f)
+
+
+def test_add_external_force_allows_distinct_custom_instances():
+    # _dedup_key -> None (opt out) for custom forces, so distinct instances pass.
+    sim = Sim()
+    sim.add_external_force(CustomBaseForce())
+    sim.add_external_force(CustomBaseForce())
+    assert len(sim._base_ext_force.members) == 2
+
+
+def test_add_external_force_rejects_duplicate_within_composite():
+    # Two distinct wrappers of the same pot combined into one composite: the
+    # per-member rescan catches the intra-composite duplicate.
+    from tambora.dynamics import ExternalGalpyPotential
+    pot = _kepler_pot()
+    composite = ExternalGalpyPotential(pot) + ExternalGalpyPotential(pot)
+    sim = Sim()
+    with pytest.raises(ValueError, match="double-count"):
+        sim.add_external_force(composite)
+
 # --- self-gravity acceleration accessors ------------------------------------------------------------------------ #
 
 def test_acc_matches_direct():
