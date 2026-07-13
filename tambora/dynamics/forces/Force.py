@@ -36,6 +36,16 @@ class Force(ABC):
     def _eval_acc(self, pos: np.ndarray, vel: np.ndarray, mass: np.ndarray, t) -> np.ndarray:
         return self.acc(pos, vel, mass, t)
 
+    def _dedup_key(self):
+        """Identity used by ``Sim.add_external_force`` to reject duplicates.
+
+        Return a hashable/comparable key built from the force's meaningful
+        configuration; two forces with equal, non-``None`` keys are treated as
+        duplicates. The default is ``None`` which opts out of dedup entirely. 
+        Never key on mutable state.
+        """
+        return None
+
     def __add__(self, other: "Force") -> "Force":
         from .CompositeForce import CompositeForce
         return CompositeForce([self, other])

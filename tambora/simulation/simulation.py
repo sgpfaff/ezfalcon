@@ -204,21 +204,36 @@ class Sim:
         TypeError
             If force is an instance of SelfGravityForce. Only accepts external
             forces.
+        ValueError
+            If this exact force instance is already added, or an equivalently
+            configured force is already added (see the force's ``_dedup_key``).
+            Adding a duplicate would double-count the field.
         '''
         def _assign_force(_force):
             if isinstance(_force, SelfGravityForce):
                 raise TypeError("The provided force is a self-gravity force, "
                                 "not an external force. Self-gravity forces are included"
                                 "in the run() method.")
-            elif isinstance(_force, Conservative):
-                self._conserv_ext_force = self._conserv_ext_force + _force
-            elif isinstance(_force, Force):
-                self._base_ext_force = self._base_ext_force + _force
-            else:
+            if not isinstance(_force, Force):
                 raise TypeError(
                     f"Expected a Force (Conservative or not) subclass, "
                     f"got {type(_force).__name__!r}."
                 )
+            # Dedup against forces already added. Rescanned per member so an
+            # incoming composite carrying its own duplicate is caught too.
+            existing = self._conserv_ext_force.members + self._base_ext_force.members
+            if any(_force is m for m in existing):
+                raise ValueError(
+                    f"This {type(_force).__name__} instance is already added.")
+            key = _force._dedup_key()
+            if key is not None and any(m._dedup_key() == key for m in existing):
+                raise ValueError(
+                    f"An equivalently-configured {type(_force).__name__} is already "
+                    f"added; adding it again would double-count the field.")
+            if isinstance(_force, Conservative):
+                self._conserv_ext_force = self._conserv_ext_force + _force
+            else:
+                self._base_ext_force = self._base_ext_force + _force
         if isinstance(force, _CompositeConservative) or isinstance(force, _CompositePlain):
             for _force in force.members:
                 _assign_force(_force)
