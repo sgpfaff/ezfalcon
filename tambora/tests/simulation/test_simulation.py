@@ -317,20 +317,20 @@ def test_multicomponent_run_output_shapes():
     assert multicomp._times.shape == (11,)
 
 
-# --- self-gravity toggle ------------------------------------------------------------------------ #
+# --- self-gravity selection (via run's method=) ------------------------------------------------- #
 
-def test_self_gravity_off_gives_zero_acc():
+def test_self_gravity_none_gives_zero_acc():
+    # method=None disables self-gravity; cached acc is zero.
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
-    sim.turn_self_gravity_off()
-    sim.run(t_end=2, dt=1, dt_out=2)
+    sim.run(t_end=2, dt=1, dt_out=2, method=None)
     acc = sim.self_gravity()
     np.testing.assert_array_equal(acc, 0)
 
-def test_self_gravity_on_gives_nonzero_acc():
+def test_self_gravity_method_gives_nonzero_acc():
+    # A named method turns self-gravity on (no toggle needed).
     sim = Sim()
     sim.add_particles('a', np.random.normal(size=(30, 3)) * 0.5, np.zeros((30, 3)), np.ones(30) * 1e4)
-    sim.turn_self_gravity_on()
     sim.run(t_end=2, dt=1, dt_out=2, method='direct', eps=0.0)
     acc = sim.self_gravity()
     assert not np.all(np.isclose(acc, 0, atol=1e-10))
@@ -2198,3 +2198,90 @@ class TestAddHook:
         sim.add_hook(_StubHook())               # mutate after snapshotting
         assert len(snapshot) == 1               # snapshot is unaffected
         assert sim.hooks is not sim._hooks      # not the live backing list
+
+
+# --- introspection: Sim.components / Component.name / __repr__ --------------------------------- #
+
+
+class TestComponents:
+    """``Sim.components`` yields self-describing Component views in insertion order."""
+
+    def _two_comp_sim(self):
+        sim = Sim()
+        sim.add_particles('comp1', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_particles('comp2', COMP2_POS, COMP2_VEL, COMP2_MASS)
+        return sim
+
+    def test_components_empty_is_empty_tuple(self):
+        assert Sim().components == ()
+
+    def test_components_is_a_tuple(self):
+        assert isinstance(self._two_comp_sim().components, tuple)
+
+    def test_components_are_views_in_insertion_order(self):
+        comps = self._two_comp_sim().components
+        assert all(isinstance(c, Component) for c in comps)
+        assert [c.name for c in comps] == ['comp1', 'comp2']
+
+    def test_component_view_slices_correctly(self):
+        # The view's mass matches the component's particles.
+        c1 = self._two_comp_sim().components[0]
+        assert len(c1.mass) == COMP1_NPTS
+        np.testing.assert_array_equal(c1.mass, COMP1_MASS)
+
+    def test_lookup_by_name_still_works(self):
+        # Dropping the dict doesn't cost keyed access: sim.<name> is unchanged.
+        sim = self._two_comp_sim()
+        assert sim.comp1.name == 'comp1'
+
+
+class TestComponentRepr:
+
+    def test_repr_reports_name_count_and_mass(self):
+        sim = Sim()
+        sim.add_particles('sat', COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4))
+        r = repr(sim.sat)
+        assert r == f"Component('sat', {COMP1_NPTS} particles, {1e4 * COMP1_NPTS:.2e} Msun)"
+
+
+class TestSimRepr:
+    """``Sim.__repr__``: a multi-line overview that never crashes on an empty sim."""
+
+    def test_empty_sim_repr_does_not_crash(self):
+        r = repr(Sim())
+        assert "0 components" in r and "0 particles" in r and "not run" in r
+
+    def test_multicomponent_repr_lists_components(self):
+        sim = Sim()
+        sim.add_particles('sat', COMP1_POS, COMP1_VEL, np.full(COMP1_NPTS, 1e4))
+        sim.add_particles('host', COMP2_POS, COMP2_VEL, np.full(COMP2_NPTS, 1e5))
+        r = repr(sim)
+        assert "2 components" in r
+        assert f"{COMP1_NPTS + COMP2_NPTS} particles" in r
+        assert "sat" in r and "host" in r
+        assert "Components" in r and "not run" in r
+
+    def test_repr_lists_forces_and_hooks_by_name(self):
+        # The forces/hooks tables name what's attached (not just counts).
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.add_external_force(CustomBaseForce())
+        sim.add_hook(EnergyMonitor())
+        r = repr(sim)
+        assert "External forces" in r and "CustomBaseForce" in r
+        assert "Hooks" in r and "EnergyMonitor" in r
+
+    def test_repr_empty_sections_show_none(self):
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        r = repr(sim)
+        assert "External forces" in r and "Hooks" in r
+        assert "(none)" in r
+
+    def test_repr_after_run_shows_time_range(self):
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct', eps=0.0, progress=False)
+        r = repr(sim)
+        assert "snapshots" in r and "not run" not in r
+        assert "0 -> 2 Gyr" in r
