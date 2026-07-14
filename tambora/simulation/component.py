@@ -885,20 +885,19 @@ class Component:
             [ax, ay, az]
             Units: `km / s^2`
         '''
-        if self._sim._self_gravity_on:
-            if use_cached and self._sim._cached_self_acc is not None:
-                return self._snap(self._sim._cached_self_acc, t)
-            elif use_cached and self._sim._cached_self_acc is None:
-                raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
+        if use_cached and self._sim._cached_self_acc is not None:
+            return self._snap(self._sim._cached_self_acc, t)
+        elif use_cached and self._sim._cached_self_acc is None:
+            raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
+        else:
+            if include_all_components:
+                self_acc, _ = self_gravity(self._sim.pos(t=t, return_internal=True), self._sim._mass, method=method,
+                                           **kwargs)
+                self_acc = self_acc[self._sl]
             else:
-                if include_all_components:
-                    self_acc, _ = self_gravity(self._sim.pos(t=t, return_internal=True), self._sim._mass, method=method, 
-                                               **kwargs)
-                    self_acc = self_acc[self._sl]
-                else:
-                    self_acc, _ = self_gravity(self.pos(t=t, return_internal=True), self.mass, method=method, 
-                                               **kwargs)
-                return self_acc
+                self_acc, _ = self_gravity(self.pos(t=t, return_internal=True), self.mass, method=method,
+                                           **kwargs)
+            return self_acc
     
     @_resolve_use_cached
     @_resolve_t
@@ -1164,9 +1163,18 @@ class Component:
         return self.external_acc(t=t, return_internal=True)[:, 2]
     
     # --- Properties ---------------------------------------------------------------------- #
-    
+
     @property
     def mass(self):
         return self._sim._mass[self._sl]
+
+    @property
+    def name(self):
+        """This component's name."""
+        return self._name
+
+    def __repr__(self):
+        m = self.mass
+        return f"Component({self._name!r}, {len(m)} particles, {m.sum():.2e} Msun)"
 
 

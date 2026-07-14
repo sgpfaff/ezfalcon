@@ -25,6 +25,48 @@ def _hook_dedup_key(hook):
     return getter() if callable(getter) else None
 
 
+def _render_table(headers, rows, align=None):
+    """Render a Unicode box-drawn table as a list of lines.
+
+    ``rows`` is a sequence of same-length string tuples; ``align`` is an
+    optional per-column string of ``'l'``/``'r'`` (default all-left).
+    """
+    ncol = len(headers)
+    align = align or 'l' * ncol
+    cells = [[str(c) for c in row] for row in rows]
+    widths = [max([len(headers[i])] + [r[i] and len(r[i]) or 0 for r in cells])
+              for i in range(ncol)]
+
+    def _row(vals):
+        parts = [f"{v:>{widths[i]}}" if align[i] == 'r' else f"{v:<{widths[i]}}"
+                 for i, v in enumerate(vals)]
+        return "│ " + " │ ".join(parts) + " │"
+
+    rule = lambda l, m, r: l + m.join("─" * (w + 2) for w in widths) + r
+    out = [rule("┌", "┬", "┐"), _row(headers), rule("├", "┼", "┤")]
+    out += [_row(r) for r in cells]
+    out.append(rule("└", "┴", "┘"))
+    return out
+
+
+def _force_label(force):
+    """Readable one-line label for an external force in ``Sim.__repr__``."""
+    name = type(force).__name__
+    pot = getattr(force, "_pot", None)
+    if pot is None:
+        return name
+    inner = ("+".join(type(p).__name__ for p in pot)
+             if isinstance(pot, (list, tuple)) else type(pot).__name__)
+    return f"{name}({inner})"
+
+
+def _cadence_label(cadence):
+    """Readable label for a cadence, including its interval where it has one."""
+    name = type(cadence).__name__
+    n = getattr(cadence, "n", None)
+    return f"{name}({n})" if n is not None else name
+
+
 class Sim:
     """
     Self-gravitating N-body simulation.
@@ -48,7 +90,6 @@ class Sim:
   
         self._times = None           # (n_snap,) Gyr
         self._has_run = False
-        self._self_gravity_on = True
         self._self_gravity_force = NullSelfGravity()
         self._conserv_ext_force = _CompositeConservative([]) # conservative external forces
         self._base_ext_force = _CompositePlain([]) # non-conservative external forces
@@ -96,24 +137,6 @@ class Sim:
         )
     
     # --- Setup ---------------------------------------------------------------------------------                                                   
-
-    def turn_self_gravity_on(self):
-        '''
-        Turn self-gravity on for the simulation. 
-        This is on by default.
-        '''
-        
-        self._self_gravity_on = True
-
-    def turn_self_gravity_off(self):
-        '''
-        Turn self-gravity off for the simulation.
-
-        Methods the acceleration and potential due
-        to self-gravity will be zero.
-        '''
-        self._self_gravity_force = NullSelfGravity()
-        self._self_gravity_on = False
 
     def add_particles(self, name, pos, vel, mass):
         """
@@ -353,7 +376,7 @@ class Sim:
     # --- Running the Simulation ------------------------------------------------------------------------------------------
 
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
-            method: Optional[str] = 'auto', integration_method: str = 'leapfrog',
+            method: Optional[str] = 'falcON', integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
             progress: bool = True,
             **kwargs):
@@ -399,28 +422,20 @@ class Sim:
         """
         if 'eps' in kwargs:
             kwargs['eps'] = self._resolve_eps(kwargs['eps'])
-
-        if method == 'auto':
-            method = 'falcON' if self._self_gravity_on else None
-
-        if self._self_gravity_on:
-            supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
-            if method not in SELF_GRAVITY_METHODS:
-                raise ValueError(
-                    f"Unknown method {method!r} for self-gravity. Supported methods: {supported}")
-            solver_cls = SELF_GRAVITY_METHODS[method]
-            valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self'}
-            invalid = set(kwargs) - valid
-            if invalid:
-                raise ValueError(
-                    f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
-                    "Only kwargs for self-gravity methods are allowed."
-                )
-            self._self_gravity_force = solver_cls(**kwargs)
-        else:
-            if method is not None:
-                raise UserWarning("Self-gravity method is not None but self-gravity is turned off. " \
-                "Self-gravity will not be used during integration.")
+        supported = sorted(m for m in SELF_GRAVITY_METHODS if m is not None)
+        if method not in SELF_GRAVITY_METHODS:
+            raise ValueError(
+                f"Unknown method {method!r} for self-gravity. "
+                f"Supported methods: {supported} (or None to disable self-gravity).")
+        solver_cls = SELF_GRAVITY_METHODS[method]
+        valid = set(inspect.signature(solver_cls.__init__).parameters) - {'self'}
+        invalid = set(kwargs) - valid
+        if invalid:
+            raise ValueError(
+                f"{invalid} is (are) invalid kwarg(s) for {method!r} self-gravity method. "
+                "Only kwargs for self-gravity methods are allowed."
+            )
+        self._self_gravity_force = solver_cls(**kwargs)
         integrator = INTEGRATORS[integration_method]()
 
         (self._positions, self._velocities, 
@@ -507,6 +522,65 @@ class Sim:
         used to add or remove hooks. Use ``add_hook`` for that.
         '''
         return tuple(self._hooks)
+
+    @property
+    def components(self) -> tuple:
+        '''Component views in insertion order.
+
+        Read-only tuple. Each :class:`Component` carries its own ``name`` and
+        the usual accessors, so you can loop directly::
+
+            for c in sim.components:
+                print(c.name, len(c.mass), c.mass.sum())
+
+        Lookup by name is unchanged: ``sim.<name>``.
+        '''
+        return tuple(Component(self, sl, name) for name, sl in self._slices.items())
+
+    def __repr__(self):
+        n_total = 0 if self._mass is None else self._mass.shape[0]
+        m_total = 0.0 if self._mass is None else float(self._mass.sum())
+        n_comp = len(self._slices)
+
+        # -- metadata header --
+        if self._has_run and self._times is not None:
+            status = (f"run: {len(self._times)} snapshots, "
+                      f"t = {self._times[0]:g} -> {self._times[-1]:g} Gyr")
+        else:
+            status = "not run"
+        lines = [f"Sim — {status}",
+                 f"  {n_total} particles in {n_comp} "
+                 f"component{'' if n_comp == 1 else 's'}, {m_total:.2e} Msun total",
+                 ""]
+
+        def _section(title, table_or_none):
+            lines.append(f"  {title}")
+            if table_or_none is None:
+                lines.append("    (none)")
+            else:
+                lines.extend("  " + ln for ln in table_or_none)
+
+        # -- components --
+        comp_rows = [(name, str(len(self._mass[sl])), f"{self._mass[sl].sum():.2e}")
+                     for name, sl in self._slices.items()]
+        _section("Components",
+                 _render_table(["name", "particles", "mass [Msun]"], comp_rows,
+                               align='lrr') if comp_rows else None)
+        lines.append("")
+
+        # -- external forces --
+        forces = list(self._conserv_ext_force.members) + list(self._base_ext_force.members)
+        _section("External forces",
+                 _render_table(["force"], [(_force_label(f),) for f in forces])
+                 if forces else None)
+        lines.append("")
+
+        # -- hooks --
+        hook_rows = [(type(h).__name__, _cadence_label(c)) for h, c in self._hooks]
+        _section("Hooks",
+                 _render_table(["hook", "cadence"], hook_rows) if hook_rows else None)
+
+        return "\n".join(lines)
 
     # --- Position Accessors -----------------------------------------------------------------
 
@@ -1518,16 +1592,13 @@ class Sim:
             [ax, ay, az]
             Units: `km / s^2`
         '''
-        if self._self_gravity_on:
-            if use_cached and self._cached_self_acc is not None:
-                return self._cached_self_acc[self._ti(t, vectorized=True)]
-            elif use_cached and self._cached_self_acc is None:
-                raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
-            else:
-                return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True), 
-                                    self.mass, method=method, **kwargs)[0]
+        if use_cached and self._cached_self_acc is not None:
+            return self._cached_self_acc[self._ti(t, vectorized=True)]
+        elif use_cached and self._cached_self_acc is None:
+            raise ValueError("Cached self-gravity is not available. Please set use_cached to False and provide a method for computing self-gravity.")
         else:
-            return np.zeros_like(self.pos(t=t, return_internal=True))
+            return self_gravity(self.pos(self._ti(t, vectorized=False), return_internal=True),
+                                self.mass, method=method, **kwargs)[0]
         
     @_resolve_use_cached
     @_resolve_t
