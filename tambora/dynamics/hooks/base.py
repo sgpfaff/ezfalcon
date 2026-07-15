@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import numpy as np
 from ..integration import StepState
 from .cadence import EveryOutput
 
@@ -46,33 +45,3 @@ class Hook(ABC):
         instances allowed). 
         """
         return None
-
-
-class EnergyMonitor(Hook):
-    """
-    Track the fractional change in total system energy over the run.
-
-    Results accumulate on the instance: ``t`` holds the sampled times and ``dE``
-    the corresponding ``|(E - E0) / E0|`` values, where ``E0`` is the energy the
-    first time the hook fires.
-    """
-
-    default_cadence = EveryOutput()
-
-    def __init__(self):
-        self.E0 = None
-        self.t = []
-        self.dE = []
-
-    def _dedup_key(self):
-        # Config-less whole-system diagnostic: at most one per simulation.
-        return (type(self),)
-
-    def __call__(self, state: StepState):
-        E = state.system_energy()
-        if self.E0 is None:
-            self.E0 = E
-        dE = np.abs((E - self.E0) / self.E0)
-        self.t.append(state.t)
-        self.dE.append(dE)
-        state.report(**{"|dE/E0|": f"{float(dE):.2e}"})

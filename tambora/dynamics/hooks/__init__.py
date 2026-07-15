@@ -1,5 +1,6 @@
-from .base import Hook, EnergyMonitor
-from .boundedness import BoundednessHook, BoundKinematics
+from .base import Hook
+from .conservation import ConservationMonitor
+from .boundedness import BoundednessHook
 from .cadence import (
     Cadence,
     EveryStep,
@@ -10,9 +11,8 @@ from .cadence import (
 
 __all__ = [
     "Hook",
-    "EnergyMonitor",
+    "ConservationMonitor",
     "BoundednessHook",
-    "BoundKinematics",
     "Cadence",
     "EveryStep",
     "EveryNSteps",
