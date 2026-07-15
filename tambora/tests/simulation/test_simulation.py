@@ -8,7 +8,7 @@ import numpy as np
 from tambora.tools.util import G_INTERNAL
 from tambora.tools.util.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity
-from tambora.dynamics.hooks import (Hook, EnergyMonitor, BoundednessHook,
+from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
                                     EveryOutput, EveryNSteps, EveryNOutputs)
 import astropy.units as u
 
@@ -2157,12 +2157,12 @@ class TestAddHook:
         sim.add_hook(_KeyedHook("host"))        # different key -> allowed
         assert len(sim._hooks) == 2
 
-    def test_rejects_second_energy_monitor(self):
-        # EnergyMonitor is config-less -> one per sim.
+    def test_rejects_second_equivalent_monitor(self):
+        # Same tracked set -> duplicate.
         sim = Sim()
-        sim.add_hook(EnergyMonitor())
+        sim.add_hook(ConservationMonitor())
         with pytest.raises(ValueError, match="equivalently-configured"):
-            sim.add_hook(EnergyMonitor())
+            sim.add_hook(ConservationMonitor())
 
     def test_boundedness_hooks_dedup_by_full_config(self):
         # Same component+config: duplicate. Different component: allowed
@@ -2266,10 +2266,10 @@ class TestSimRepr:
         sim = Sim()
         sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
         sim.add_external_force(CustomBaseForce())
-        sim.add_hook(EnergyMonitor())
+        sim.add_hook(ConservationMonitor())
         r = repr(sim)
         assert "External forces" in r and "CustomBaseForce" in r
-        assert "Hooks" in r and "EnergyMonitor" in r
+        assert "Hooks" in r and "ConservationMonitor" in r
 
     def test_repr_empty_sections_show_none(self):
         sim = Sim()
@@ -2284,4 +2284,62 @@ class TestSimRepr:
         sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct', eps=0.0, progress=False)
         r = repr(sim)
         assert "snapshots" in r and "not run" not in r
-        assert "0 -> 2 Gyr" in r
+
+
+# --- default monitors (run's monitors= / Sim.monitor) ------------------------------------------ #
+
+class TestDefaultMonitors:
+    """``run(monitors=...)`` attaches a ConservationMonitor unless told otherwise."""
+
+    def _sim(self):
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        return sim
+
+    def _run(self, sim, **kw):
+        sim.run(t_end=2.0, dt=1.0, dt_out=1.0, method='direct', eps=0.0,
+                progress=False, **kw)
+
+    def test_monitor_is_none_before_run(self):
+        assert self._sim().monitor is None
+
+    def test_auto_attaches_energy_monitor(self):
+        sim = self._sim()
+        self._run(sim)                       # monitors='auto' by default
+        assert isinstance(sim.monitor, ConservationMonitor)
+        assert sim.monitor.track == ('energy',)
+        assert len(sim.monitor.t) > 0        # it actually fired
+
+    def test_monitors_false_attaches_none(self):
+        sim = self._sim()
+        self._run(sim, monitors=False)
+        assert sim.monitor is None
+        assert sim.hooks == ()
+
+    def test_explicit_track_is_honoured(self):
+        sim = self._sim()
+        self._run(sim, monitors=('energy',))
+        assert sim.monitor.track == ('energy',)
+
+    def test_bare_string_track_is_accepted(self):
+        # monitors='energy' must not be exploded into ('e','n','e','r','g','y').
+        sim = self._sim()
+        self._run(sim, monitors='energy')
+        assert sim.monitor.track == ('energy',)
+
+    def test_user_supplied_monitor_wins(self):
+        # The default injection must not double-register (or raise on dedup).
+        sim = self._sim()
+        mine = ConservationMonitor()
+        sim.add_hook(mine)
+        self._run(sim)
+        assert sim.monitor is mine
+        assert len(sim.hooks) == 1
+
+    def test_default_monitor_appears_in_hooks_and_repr(self):
+        sim = self._sim()
+        self._run(sim)
+        r = repr(sim)
+        assert len(sim.hooks) == 1
+        assert "ConservationMonitor" in r
+        assert "t = 0 -> 2 Gyr" in r

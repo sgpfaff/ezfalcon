@@ -378,7 +378,7 @@ class Sim:
     def run(self, t_end: float, dt: float, dt_out: float, t0: float=0.0,
             method: Optional[str] = 'falcON', integration_method: str = 'leapfrog',
             cache_self_gravity_acc: bool = True, cache_self_gravity_pot: bool = True,
-            progress: bool = True,
+            progress: bool = True, monitors='auto',
             **kwargs):
         """
         Run the simulation to *t_end* [Gyr].
@@ -404,8 +404,18 @@ class Sim:
             Whether to cache the self-gravity acceleration at each output snapshot. Default is True.
         cache_self_gravity_pot : bool, optional
             Whether to cache the self-gravitational potential at each output snapshot. Default is True.
-        **kwargs 
-            Additional keyword arguments to pass to the gravity method. 
+        progress : bool, optional
+            Whether to show the progress bar. Default is True.
+        monitors : str, sequence of str, or False, optional
+            Conservation diagnostics to attach for this run, via
+            :class:`~tambora.dynamics.hooks.ConservationMonitor`. ``'auto'``
+            (default) picks a sensible set (currently ``('energy',)``). Pass a
+            name or sequence of names (e.g. ``('energy',)``) to choose
+            explicitly, or ``False`` to attach none. Ignored if you already
+            added your own ``ConservationMonitor``; read the results from
+            ``sim.monitor``.
+        **kwargs
+            Additional keyword arguments to pass to the gravity method.
 
             eps can be provided as:
 
@@ -436,6 +446,7 @@ class Sim:
                 "Only kwargs for self-gravity methods are allowed."
             )
         self._self_gravity_force = solver_cls(**kwargs)
+        self._add_default_monitors(monitors)
         integrator = INTEGRATORS[integration_method]()
 
         (self._positions, self._velocities, 
@@ -514,6 +525,27 @@ class Sim:
                             f"{type(cadence).__name__!r}.")
         self._hooks.append((hook, cadence))
 
+    def _add_default_monitors(self, monitors):
+        '''Attach this run's default ``ConservationMonitor`` (called from ``run``).
+
+        ``monitors`` is ``'auto'`` (default is currently ``('energy',)``),
+        ``False``/``None`` to disable, or an explicit quantity name / sequence of
+        names. Skipped entirely if a ``ConservationMonitor`` is already
+        registered, so a monitor you added yourself always wins over the default.
+        '''
+        from ..dynamics.hooks import ConservationMonitor
+        if monitors is False or monitors is None:
+            return
+        if any(isinstance(hook, ConservationMonitor) for hook, _ in self._hooks):
+            return
+        if isinstance(monitors, str):
+            track = ('energy',) if monitors == 'auto' else (monitors,)
+        else:
+            track = tuple(monitors)
+        if not track:
+            return
+        self.add_hook(ConservationMonitor(track=track))
+
     @property
     def hooks(self):
         '''Registered ``(hook, cadence)`` pairs, in registration order.
@@ -522,6 +554,21 @@ class Sim:
         used to add or remove hooks. Use ``add_hook`` for that.
         '''
         return tuple(self._hooks)
+
+    @property
+    def monitor(self):
+        '''The attached :class:`ConservationMonitor`, or None if there isn't one.
+
+        Convenience handle for the monitor ``run`` adds by default::
+
+            sim.run(t_end=1., dt=0.01, dt_out=0.1)
+            sim.monitor.drift['energy'][-1]
+        '''
+        from ..dynamics.hooks import ConservationMonitor
+        for hook, _ in self._hooks:
+            if isinstance(hook, ConservationMonitor):
+                return hook
+        return None
 
     @property
     def components(self) -> tuple:
@@ -1498,60 +1545,6 @@ class Sim:
                 Es = self.system_energy(t=t, use_cached=False, method=method, return_internal=True, **kwargs)
                 E0 = self.system_energy(t=0, use_cached=False, method=method, return_internal=True, **kwargs)
         return np.abs((Es - E0) / E0)
-
-    # --- Boundedness -----------------------------------------------------------------
-
-    def boundedness(self, component, t=-1, eps=None, method='falcON', theta=0.6, max_iter=50,
-                    criterion='energy', tidal_force=None):
-        '''
-        Boolean mask of self-bound particles in *component* at time *t*.
-
-        Post-run counterpart of ``BoundednessHook``: runs iterative unbinding on
-        a stored snapshot. Binding is measured relative to the component itself
-        (its own self-gravity and COM frame), not the full system.
-
-        Parameters
-        ----------
-        component : str
-            Name of the component.
-        t : int or float, optional
-            Snapshot index (int) or time in Gyr (float). Default is -1 (last snapshot).
-        eps : float
-            Softening length. Required.
-            Units: `kpc`
-        method : str, optional
-            Self-gravity solver: 'falcON' (default), 'direct', or 'direct_C'.
-        theta : float, optional
-            falcON opening angle (ignored by the direct methods).
-        max_iter : int, optional
-            Maximum unbinding iterations.
-        criterion : str, optional
-            ``'energy'`` (default) for self-binding energy, or ``'jacobi'`` for
-            the tidal Roche/Jacobi criterion (requires ``tidal_force``).
-        tidal_force : TidalTensorGalpyForce, optional
-            Tidal-tensor source for ``criterion='jacobi'``.
-
-        Returns
-        -------
-        bound : (n_component,) bool array
-            True for bound particles, in the component's particle order.
-
-        Raises
-        ------
-        ValueError
-            If *eps* is not provided, *component* is unknown, or
-            ``criterion='jacobi'`` without a ``tidal_force``.
-        '''
-        from ..dynamics.diagnostics import bound_mask
-        if eps is None:
-            raise ValueError("eps is required for boundedness().")
-        if component not in self._slices:
-            raise ValueError(f"Unknown component {component!r}. Known components: {sorted(self._slices)}")
-        ti = self._ti(t, vectorized=False)
-        sl = self._slices[component]
-        return bound_mask(self._positions[ti, sl], self._velocities[ti, sl], self._mass[sl],
-                          eps=eps, method=method, theta=theta, max_iter=max_iter,
-                          criterion=criterion, tidal_force=tidal_force)
 
     # --- Acceleration Accessors -----------------------------------------------------------------
 
