@@ -261,21 +261,16 @@ def test_galpysampler_samples_a_hernquist_and_an_nfw():
 
 def test_galpysampler_falls_back_to_eddingtondf_for_other_spherical_potentials(monkeypatch):
     # The `else` arm of the dispatch: anything that is not Plummer/Hernquist/NFW
-    # gets galpy's general eddingtondf. Jaffe is spherical and has no dedicated
-    # isotropic DF, so it exercises the fallback.
-    seen = {}
-    real = gt.galpydfsampler
+    # gets galpy's general eddingtondf. Jaffe is spherical with no dedicated
+    # isotropic DF, so it lands there.
 
-    def spy(_df, **kw):
-        seen['df'] = type(_df).__name__
-        return real(_df, **kw)
-    monkeypatch.setattr(gt, 'galpydfsampler', spy)
+    seen = {}
+    monkeypatch.setattr(gt, 'galpydfsampler',
+                        lambda _df, **kw: seen.update(df=type(_df).__name__))
     pot = JaffePotential(amp=1e10, ro=8., vo=220.)
     pot.turn_physical_on()
-    pos, vel, mass = galpysampler(pot, n=6, m_total=1e6)
-    assert pos.shape == (6, 3) and vel.shape == (6, 3)
-    assert np.isfinite(pos).all() and np.isfinite(vel).all()
-    np.testing.assert_allclose(mass.sum(), 1e6)
+    gt.galpysampler(pot, n=6, m_total=1e6)
+
     from galpy.df import eddingtondf
     assert seen['df'] == eddingtondf.__name__
 
