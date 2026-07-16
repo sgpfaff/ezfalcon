@@ -646,8 +646,18 @@ class Component:
             External potential at each snapshot.
             Units: `Msun km^2 / s^2`
         '''
-        ext_pot = np.zeros(self.mass.shape[0])
-        ext_pot = self._sim._conserv_ext_force.potential(self.pos(t=t, return_internal=True), self.mass, t)
+        ti = self._ti(t)
+        if isinstance(ti, (int, np.integer)):
+            t_phys = self._sim._times[ti]
+            ext_pot = self._sim._conserv_ext_force.potential(
+                pos=self.pos(t=ti, return_internal=True), mass=self.mass, t=t_phys)
+        else:
+            warnings.warn("Computing external potential on-the-fly for multiple snapshots may be slow.")
+            times = self._sim._times
+            ext_pot = np.zeros((len(times), self.mass.shape[0]))
+            for i, t_i in enumerate(times):
+                ext_pot[i] += self._sim._conserv_ext_force.potential(
+                    pos=self.pos(t=i, return_internal=True), mass=self.mass, t=t_i)
         return self.mass * ext_pot
     
     @_resolve_use_cached
