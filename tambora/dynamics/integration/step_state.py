@@ -251,14 +251,15 @@ class StepState:
                 + np.sum(self.external_pot()))
 
     # -- boundedness (iterative unbinding), cached per step --
-    def bound_mask(self, component=None, *, eps, method='falcON', theta=0.6, max_iter=50,
-                   criterion='energy', tidal_force=None):
+    def bound_mask(self, component=None, *, eps, method='falcON', theta=0.6, max_iter=50):
         '''
         Boolean mask of self-bound particles, via iterative unbinding.
 
         Cached for the life of the step and keyed by the particle subset and
         parameters, so multiple hooks asking on the same step (at any cadence)
         share a single computation.
+
+        Binding is measured relative to the tested particles alone, in isolation.
 
         Parameters
         ----------
@@ -269,21 +270,15 @@ class StepState:
             Softening length [kpc]. Required.
         method, theta, max_iter
             Passed through to the iterative unbinding solver.
-        criterion : str, optional
-            ``'energy'`` (default) or ``'jacobi'`` (requires ``tidal_force``).
-        tidal_force : TidalTensorGalpyForce, optional
-            Tidal-tensor source for ``criterion='jacobi'``.
         '''
         from ..diagnostics import bound_mask as _bound_mask
         c = self if component is None else self.component(component)
         sl = c._sl
         # key by the resolved slice (not the component name) so a whole-system
         # call and a component call can never collide in the shared cache.
-        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter,
-               criterion, id(tidal_force))
+        key = ("bound_mask", (sl.start, sl.stop, sl.step), eps, method, theta, max_iter)
         if key not in self._cache:
             self._cache[key] = _bound_mask(c.pos(), c.vel(), c.mass,
                                            eps=eps, method=method, theta=theta,
-                                           max_iter=max_iter, criterion=criterion,
-                                           tidal_force=tidal_force)
+                                           max_iter=max_iter)
         return self._cache[key]
