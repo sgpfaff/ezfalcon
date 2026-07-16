@@ -420,17 +420,17 @@ def test_time_dependent_potential_matches_galpy():
     td_o.turn_physical_on()
 
     np.testing.assert_allclose(
-        td_pos_out[..., 0].squeeze(), td_o.x(td_ts).T.squeeze(),
+        td_pos_out[..., 0].squeeze(), td_o.x(td_ts, use_physical=True, quantity=False).T.squeeze(),
         rtol=1e-8,
         err_msg="x position does not match galpy for time-dependent potential.",
     )
     np.testing.assert_allclose(
-        td_pos_out[..., 1].squeeze(), td_o.y(td_ts).T.squeeze(),
+        td_pos_out[..., 1].squeeze(), td_o.y(td_ts, use_physical=True, quantity=False).T.squeeze(),
         rtol=1e-6,
         err_msg="y position does not match galpy for time-dependent potential.",
     )
     np.testing.assert_allclose(
-        td_pos_out[..., 2].squeeze(), td_o.z(td_ts).T.squeeze(),
+        td_pos_out[..., 2].squeeze(), td_o.z(td_ts, use_physical=True, quantity=False).T.squeeze(),
         rtol=1e-6,
         err_msg="z position does not match galpy for time-dependent potential.",
     )

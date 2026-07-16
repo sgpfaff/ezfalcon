@@ -80,22 +80,22 @@ class TestOrbitIntegrationAgainstGalpy:
         cls.Lz_out = (cls.pos_out[...,0]*cls.vel_out[...,1] - cls.pos_out[...,1]*cls.vel_out[...,0]).squeeze()
         
     def test_x_against_galpy(self):
-        np.testing.assert_allclose(self.pos_out[...,0][...,0], self.o_galpy.x(self.ts).T, rtol=1e-8), "x position does not match galpy output."
+        np.testing.assert_allclose(self.pos_out[...,0][...,0], self.o_galpy.x(self.ts, use_physical=True, quantity=False).T, rtol=1e-8), "x position does not match galpy output."
         
     def test_vx_against_galpy(self):
-        np.testing.assert_allclose(self.vel_out[...,0][...,0], (self.o_galpy.vx(self.ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "Velocity does not match galpy output."
+        np.testing.assert_allclose(self.vel_out[...,0][...,0], (self.o_galpy.vx(self.ts, use_physical=True, quantity=False).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "Velocity does not match galpy output."
 
     def test_y_against_galpy(self):
-        np.testing.assert_allclose(self.pos_out[...,1][...,0], self.o_galpy.y(self.ts).T, rtol=1e-6), "y position does not match galpy output."
+        np.testing.assert_allclose(self.pos_out[...,1][...,0], self.o_galpy.y(self.ts, use_physical=True, quantity=False).T, rtol=1e-6), "y position does not match galpy output."
 
     def test_vy_against_galpy(self):
-        np.testing.assert_allclose(self.vel_out[...,1][...,0], (self.o_galpy.vy(self.ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "y velocity does not match galpy output."
+        np.testing.assert_allclose(self.vel_out[...,1][...,0], (self.o_galpy.vy(self.ts, use_physical=True, quantity=False).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "y velocity does not match galpy output."
 
     def test_z_against_galpy(self):
-        np.testing.assert_allclose(self.pos_out[...,2][...,0], self.o_galpy.z(self.ts).T, rtol=1e-6), "z position does not match galpy output."
+        np.testing.assert_allclose(self.pos_out[...,2][...,0], self.o_galpy.z(self.ts, use_physical=True, quantity=False).T, rtol=1e-6), "z position does not match galpy output."
 
     def test_vz_against_galpy(self):
-        np.testing.assert_allclose(self.vel_out[...,2][...,0], (self.o_galpy.vz(self.ts).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "z velocity does not match galpy output."
+        np.testing.assert_allclose(self.vel_out[...,2][...,0], (self.o_galpy.vz(self.ts, use_physical=True, quantity=False).T * u.km/u.s).to(u.kpc/u.Gyr).value, rtol=1e-6), "z velocity does not match galpy output."
 
     def test_energy_against_galpy(self):
         energy_galpy = self.o_galpy.E(self.ts, quantity=True).to(u.km**2/u.s**2).value
