@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/sgpfaff/tambora/branch/master/graph/badge.svg)](https://codecov.io/gh/sgpfaff/tambora)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
-[![galpy](https://img.shields.io/badge/galpy-1.9%20%7C%201.10%20%7C%201.11-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
+[![galpy](https://img.shields.io/badge/galpy-1.9%20%7C%201.10%20%7C%201.11%20%7C%201.12-blue)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
 
 
 ## Installation
@@ -24,7 +24,7 @@ pip install tambora==0.1.0a1.dev17
 ### Optional Dependencies
 
 
-[galpy](https://docs.galpy.org/en/v1.11.2/) is required to be installed in the same environment as [tambora](https://tambora.readthedocs.io/en/latest/) to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
+[galpy](https://docs.galpy.org/en/stable/) is required to be installed in the same environment as [tambora](https://tambora.readthedocs.io/en/latest/) to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
 
 
 
