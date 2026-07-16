@@ -41,7 +41,9 @@ jobs:
       - name: Run tests with coverage
         working-directory: /tmp
         run: |
-          python -m pytest --pyargs tambora.tests -o "addopts=" --cov=tambora --cov-report=term-missing --cov-report=xml:$GITHUB_WORKSPACE/coverage.xml -q
+          # --cov-config is required: this runs from /tmp, so coverage cannot find
+          # pyproject.toml on its own and would silently ignore omit=.
+          python -m pytest --pyargs tambora.tests -o "addopts=" --cov=tambora --cov-config=$GITHUB_WORKSPACE/pyproject.toml --cov-report=term-missing --cov-report=xml:$GITHUB_WORKSPACE/coverage.xml -q
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
