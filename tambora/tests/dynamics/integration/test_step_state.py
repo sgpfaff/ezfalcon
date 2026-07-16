@@ -17,6 +17,8 @@ Testing Approach
   slicing, component views, caching, and reporting.
 """
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -164,6 +166,109 @@ def test_unknown_component_raises_key_error():
     st = make_state()
     with pytest.raises(KeyError):
         st.component('nonexistent')
+
+
+# --- external_acc: sum of the two external force channels ---------------------
+#
+# Four cases (each channel present or not). The both-None case is the one worth
+# pinning: it returns a scalar 0.0, not a zero array.
+
+def test_external_acc_sums_both_channels():
+    st = make_state()
+    st._result.conserv_ext_acc = np.full((5, 3), 1.0)
+    st._result.base_ext_acc = np.full((5, 3), 2.0)
+    np.testing.assert_array_equal(st.external_acc(), np.full((5, 3), 3.0))
+
+
+@pytest.mark.parametrize("channel", ['conserv_ext_acc', 'base_ext_acc'])
+def test_external_acc_works_with_only_one_channel_set(channel):
+    st = make_state()
+    setattr(st._result, channel, np.full((5, 3), 7.0))
+    np.testing.assert_array_equal(st.external_acc(), np.full((5, 3), 7.0))
+
+
+def test_external_acc_is_component_local():
+    st = make_state()
+    st._result.conserv_ext_acc = np.arange(15.).reshape(5, 3)
+    st._result.base_ext_acc = np.zeros((5, 3))
+    np.testing.assert_array_equal(st.a.external_acc(), np.arange(15.).reshape(5, 3)[0:3])
+    np.testing.assert_array_equal(st.b.external_acc(), np.arange(15.).reshape(5, 3)[3:5])
+
+
+def test_external_acc_is_a_zero_vector_when_no_external_force_is_present():
+    # The return type must not depend on the sim's configuration: a caller doing
+    # external_acc()[..., 0] must get zeros, not a TypeError, when there is no
+    # external force.
+    st = make_state()
+    out = st.external_acc()
+    np.testing.assert_array_equal(out, np.zeros((5, 3)))
+    assert out.shape == (5, 3)
+    np.testing.assert_array_equal(out[..., 0], np.zeros(5))     # indexable
+
+
+def test_external_acc_zero_vector_is_component_local():
+    st = make_state()
+    assert st.a.external_acc().shape == (3, 3)
+    assert st.b.external_acc().shape == (2, 3)
+
+
+def test_external_acc_shape_does_not_depend_on_which_channels_are_set():
+    shapes = []
+    for c, b in ((None, None), (np.ones((5, 3)), None),
+                 (None, np.ones((5, 3))), (np.ones((5, 3)), np.ones((5, 3)))):
+        st = make_state()
+        st._result.conserv_ext_acc, st._result.base_ext_acc = c, b
+        shapes.append(st.a.external_acc().shape)
+    assert shapes == [(3, 3)] * 4
+
+
+def test_external_acc_does_not_alias_or_mutate_the_step_result():
+    # The `out = 0.0` seed matters: starting from `out = c[sl]` and using += would
+    # write straight through the view into the StepResult, corrupting the
+    # integrator's own array.
+    st = make_state()
+    C = np.full((5, 3), 1.0)
+    B = np.full((5, 3), 2.0)
+    st._result.conserv_ext_acc, st._result.base_ext_acc = C, B
+    out = st.external_acc()
+    assert not np.shares_memory(out, C)
+    np.testing.assert_array_equal(C, 1.0)        # untouched
+    np.testing.assert_array_equal(B, 2.0)
+
+
+# --- __getattr__ guard --------------------------------------------------------
+
+def test_private_attribute_lookup_does_not_recurse():
+    # __getattr__ reads self._ctx, so it MUST refuse underscore names first: on an
+    # object whose _ctx is not set (during __init__, or after __new__ from
+    # copy/pickle), self._ctx would re-enter __getattr__ forever. This is a
+    # RecursionError without the `name.startswith("_")` guard, not a nicety.
+    bare = StepState.__new__(StepState)          # nothing initialised
+    with pytest.raises(AttributeError):
+        bare._ctx
+
+
+def test_dunder_probes_raise_attribute_error_rather_than_recursing():
+    # copy/pickle/IPython probe for *optional* dunders on arbitrary objects. Each
+    # must get a clean AttributeError so the protocol falls back to its default.
+    # Only names object() does not already define reach __getattr__ at all.
+    # __getstate__/__reduce_ex__ are real methods on object since 3.11.
+    bare = StepState.__new__(StepState)
+    for probe in ('__deepcopy__', '__copy__', '_repr_html_'):
+        assert not hasattr(object(), probe)      # else this proves nothing
+        with pytest.raises(AttributeError):
+            getattr(bare, probe)
+
+
+def test_uninitialised_state_can_be_deepcopied():
+    # The practical consequence of the guard.
+    copy.deepcopy(StepState.__new__(StepState))
+
+
+def test_unknown_public_attribute_names_the_object_and_the_attribute():
+    st = make_state()
+    with pytest.raises(AttributeError, match="no attribute or component named 'sat'"):
+        st.sat
 
 
 # --- self_potential -----------------------------------------------------------
