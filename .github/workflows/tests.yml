@@ -192,13 +192,15 @@ jobs:
         run: python -m pytest --pyargs tambora.tests -o "addopts=" -q
 
   galpy-compat:
+    # pyproject declares galpy>=1.9, so every minor from 1.9 to the current
+    # release is supported and must be pinned here explicitly.
     name: galpy ${{ matrix.galpy-version }} (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12"]
-        galpy-version: ["1.9", "1.10", "1.11"]
+        galpy-version: ["1.9", "1.10", "1.11", "1.12"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -219,7 +221,21 @@ jobs:
         if: matrix.galpy-version == '1.9'
         run: pip install "scipy<1.14"
 
-      - name: Run galpy-specific tests
+      - name: Confirm the pinned galpy is the one under test
+        # pip resolves ".[test]" first and the pin second; if the pin were ever
+        # silently skipped, every leg would test the same version and prove
+        # nothing.
         working-directory: /tmp
         run: |
-          python -m pytest --pyargs tambora.tests.tools.util.test_galpy_bridge tambora.tests.tools.test_galpy_tools -o "addopts=" -q
+          python -c "
+          import galpy
+          got, want = galpy.__version__, '${{ matrix.galpy-version }}'
+          assert got.startswith(want), f'pinned {want}, got {got}'
+          print(f'confirmed galpy {got}')
+          "
+
+      - name: Run full suite
+      
+        working-directory: /tmp
+        run: |
+          python -m pytest --pyargs tambora.tests -o "addopts=" -q
