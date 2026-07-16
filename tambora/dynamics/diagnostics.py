@@ -1,26 +1,29 @@
 """
 Pure diagnostic computations shared by the live hooks (``StepState``) and the
 post-run accessors (``Sim``).
-
-Keeping the physics here — as plain array-in functions — is what lets the live
-and post-run paths agree: both call the same code, one on live integration
-state, the other on stored snapshots.
 """
 
 import numpy as np
+
+# The COM frame for the first unbinding pass is seeded from this many of the
+# most-bound particles (a fraction of the component, clamped).
+_SEED_FRAC = 0.01
+_SEED_MIN, _SEED_MAX = 8, 128
 
 
 def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
     """Boolean mask of self-bound particles via iterative unbinding.
 
-    A particle is bound if its energy in the COM frame is negative,
+    A particle is bound if its specific energy in the cluster's center-of-mass
+    frame is negative,
 
         0.5 |v - v_com|^2 + phi_self < 0,
 
     where ``phi_self`` is the *specific* self-gravity potential of the currently
-    bound set. Since both ``v_com`` and ``phi_self`` depend on which particles
-    are bound, this is iterated to convergence: recompute the COM velocity and
-    self-potential from the bound set, drop particles with E >= 0, repeat.
+    bound set. Particles failing the test are dropped, the COM frame and
+    potential are recomputed from those that remain, and the test repeats until
+    the set stops shrinking.
+
 
     Parameters
     ----------
@@ -46,28 +49,39 @@ def bound_mask(pos, vel, mass, eps, method='falcON', theta=0.6, max_iter=50):
 
     Notes
     -----
-    The self-potential is recomputed from the *bound subset* each iteration.
-    When called on a single component of a multi-component system this measures
-    binding to that component alone. It must NOT be shortcut to a cached
-    full-system self-potential, which would fold in other components' particles
-    and give the wrong binding energy.
+    The "center" velocity for the first iteration is computed 
+    using the most bound particles only to avoid stripped stars
+    biasing the result.
     """
     from .forces.self_gravity import self_gravity
 
     mass = np.asarray(mass)
-    bound = np.ones(len(mass), dtype=bool)
     kw = dict(eps=eps, theta=theta) if method == 'falcON' else dict(eps=eps)
-    for _ in range(max_iter):
+
+    bound = np.ones(len(mass), dtype=bool)
+    for i in range(max_iter):
         mb = mass[bound]
-        v_com = (mb[:, None] * vel[bound]).sum(0) / mb.sum()
+        vb = vel[bound]
         _, phi = self_gravity(pos[bound], mb, method=method, **kw)   # specific potential
-        keep = 0.5 * np.sum((vel[bound] - v_com) ** 2, axis=-1) + phi < 0
+
+        if i == 0:
+            # Seed from the most-bound core.
+            k = int(np.clip(len(mb) * _SEED_FRAC, _SEED_MIN, _SEED_MAX))
+            k = min(k, len(mb))
+            core = np.argpartition(mb * phi, k - 1)[:k]     # energy, not phi
+            v_com = (mb[core, None] * vb[core]).sum(0) / mb[core].sum()
+        else:
+            v_com = (mb[:, None] * vb).sum(0) / mb.sum()
+
+        E = 0.5 * np.sum((vb - v_com) ** 2, axis=-1) + phi
+        keep = E < 0
         if keep.all():
-            break                              # converged: nothing new unbound
+            break                          # converged: nothing new unbound
         idx = np.flatnonzero(bound)
-        bound[idx[~keep]] = False              # monotonic: once unbound, stays unbound
+        bound[idx[~keep]] = False          # monotonic: once unbound, stays unbound
         if not bound.any():
             break
+
     return bound
 
 
