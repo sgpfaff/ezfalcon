@@ -56,12 +56,13 @@ def galpy_orbit_to_tambora(orb):
      '''
     _require_galpy()
     _check_physical(orb)
-    pos = np.atleast_2d(np.array([orb.x(return_physical=True), 
-                                  orb.y(return_physical=True), 
-                                  orb.z(return_physical=True)]).T) # kpc
-    vel = np.atleast_2d(np.array([orb.vx(return_physical=True), 
-                                  orb.vy(return_physical=True), 
-                                  orb.vz(return_physical=True)]).T) # km / s
+    kw = dict(use_physical=True, quantity=False)
+    pos = np.atleast_2d(np.array([orb.x(**kw),
+                                  orb.y(**kw),
+                                  orb.z(**kw)]).T)   # kpc
+    vel = np.atleast_2d(np.array([orb.vx(**kw),
+                                  orb.vy(**kw),
+                                  orb.vz(**kw)]).T)  # km / s
     return pos, vel
 
 # --- Sampling tools ----------------------------------------------------------------
