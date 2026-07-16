@@ -10,7 +10,7 @@
       "author_name": "Gabriel Pfaffman",
       "author_email": "gabriel.pfaffman@mail.utoronto.ca",
       "project_url": "",
-      "license": "BSD 3-Clause",
+      "license": "Other",
       "minimum_python_version": "3.9",
       "use_compiled_extensions": "n",
       "enable_dynamic_dev_versions": "n",

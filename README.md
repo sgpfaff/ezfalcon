@@ -30,14 +30,22 @@ pip install tambora==0.1.0a1.dev17
 
 ## License
 
-This project is Copyright (c) Gabriel Pfaffman and licensed under
-the terms of the BSD 3-Clause license. This package is based upon
-the `Openastronomy packaging guide <https://github.com/OpenAstronomy/packaging-guide>`_
-which is licensed under the BSD 3-clause licence. See the licenses folder for
-more information.
+This project is Copyright (c) Gabriel Pfaffman and is licensed under the terms of the
+[GNU General Public License v2.0 or later](LICENSE) (`GPL-2.0-or-later`).
 
-Contributing
-------------
+tambora bundles [falcON](https://td.mpia.de/~dehnen/falcON/), the fast tree-code by Walter
+Dehnen, the same code distributed as `gyrfalcON` in [NEMO](https://astronemo.readthedocs.io/)
+and compiles it into the `_falcon` extension module. falcON is GPL-2.0-or-later, so tambora as
+distributed is a combined work and carries the same licence. See
+[licenses/LICENSE.rst](licenses/LICENSE.rst) for the full provenance.
+
+If you use the falcON self-gravity backend, please cite Dehnen (2000, 2002) alongside tambora.
+
+This package's packaging scaffolding is based upon the
+[OpenAstronomy packaging guide](https://github.com/OpenAstronomy/packaging-guide), which is
+licensed under the BSD 3-Clause licence. See the licenses folder for more information.
+
+## Contributing
 
 We love contributions! tambora is open source,
 built on open source, and we'd love to have you hang out in our community.
