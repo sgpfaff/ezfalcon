@@ -87,6 +87,46 @@ def test_full_and_component_kinematics():
     np.testing.assert_allclose(st.a.r(), np.linalg.norm(POS[0:3], axis=-1))
 
 
+# The six axis accessors are near-identical one-liners (self.pos()[..., 0] and
+# friends), so the realistic bug is a wrong constant from copy-paste. 
+
+@pytest.mark.parametrize("name, arr, col", [
+    ('x', POS, 0), ('y', POS, 1), ('z', POS, 2),
+    ('vx', VEL, 0), ('vy', VEL, 1), ('vz', VEL, 2),
+])
+def test_axis_accessors_select_the_right_column(name, arr, col):
+    st = make_state()
+    np.testing.assert_array_equal(getattr(st, name)(), arr[:, col])          # whole system
+    np.testing.assert_array_equal(getattr(st.a, name)(), arr[0:3, col])      # component a
+    np.testing.assert_array_equal(getattr(st.b, name)(), arr[3:5, col])      # component b
+
+
+def test_pos_and_vel_are_component_local():
+    st = make_state()
+    np.testing.assert_array_equal(st.vel(), VEL)
+    np.testing.assert_array_equal(st.b.pos(), POS[3:5])
+    np.testing.assert_array_equal(st.b.vel(), VEL[3:5])
+
+
+def test_r_is_the_norm_of_pos_at_every_scope():
+    st = make_state()
+    np.testing.assert_allclose(st.r(), np.linalg.norm(POS, axis=-1))
+    np.testing.assert_allclose(st.b.r(), np.linalg.norm(POS[3:5], axis=-1))
+    # r is a magnitude, so it must not simply track one axis.
+    assert not np.allclose(st.r(), st.x())
+
+
+def test_accessors_are_live_views_of_the_step_result():
+    # pos()/vel() slice the StepResult rather than copying, so a hook that stashes
+    # the array (instead of copying out of it) sees later steps' data. Pinning the
+    # view semantics the hook docs warn about.
+    st = make_state()
+    seen = st.a.pos()
+    st._result.pos[0, 0] = 99.0
+    assert seen[0, 0] == 99.0
+    assert st.a.x()[0] == 99.0
+
+
 def test_KE_is_component_local():
     st = make_state()
     np.testing.assert_allclose(st.a.KE(), 0.5 * MASS[0:3] * np.sum(VEL[0:3] ** 2, axis=-1))
@@ -287,14 +327,14 @@ def test_bound_mask_computed_once_for_repeated_calls(monkeypatch):
 def test_bound_mask_cache_keys_are_distinct(monkeypatch):
     calls = _patch_bound_mask(monkeypatch)
     st = make_state()
-    tide = object()
-    st.bound_mask('a', eps=0.1)                                         # 1
-    st.bound_mask('a', eps=0.1)                                         # cached
-    st.bound_mask('b', eps=0.1)                                         # 2: other component
-    st.bound_mask('a', eps=0.2)                                         # 3: other eps
-    st.bound_mask('a', eps=0.1, criterion='jacobi', tidal_force=tide)  # 4: criterion+tide
-    st.bound_mask(eps=0.1)                                              # 5: whole system
-    assert calls['n'] == 5
+    st.bound_mask('a', eps=0.1)                     # 1
+    st.bound_mask('a', eps=0.1)                     # cached
+    st.bound_mask('b', eps=0.1)                     # 2: other component
+    st.bound_mask('a', eps=0.2)                     # 3: other eps
+    st.bound_mask('a', eps=0.1, method='direct')    # 4: other solver
+    st.bound_mask('a', eps=0.1, max_iter=10)        # 5: other max_iter
+    st.bound_mask(eps=0.1)                          # 6: whole system
+    assert calls['n'] == 6
 
 
 # --- reporting ----------------------------------------------------------------
