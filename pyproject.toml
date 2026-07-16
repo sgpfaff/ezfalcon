@@ -1,6 +1,7 @@
 [build-system]
 requires = [
-  "setuptools>=62.1",
+  # >=77 for PEP 639 (license = SPDX expression, license-files).
+  "setuptools>=77",
   "setuptools_scm[toml]>=8.0.0",
   "numpy",
   "wheel",]
@@ -11,9 +12,17 @@ name = "tambora"
 description = "An n-body code for the modern era."
 requires-python = ">=3.10"
 readme = { file = "README.md", content-type = "text/markdown" }
-license = { file = "licenses/LICENSE.rst" }
+# GPL is required, not chosen: setup.py compiles the bundled falcON sources
+# (GPL-2.0-or-later) into the _falcon extension. See licenses/LICENSE.rst.
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE", "licenses/*.rst"]
 authors = [
   { name = "Gabriel Pfaffman", email = "gabriel.pfaffman@mail.utoronto.ca" },
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
     "numpy",
