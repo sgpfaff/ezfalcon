@@ -10,7 +10,7 @@ from tambora.tools.util import G_INTERNAL
 from tambora.tools.util.units import KMS_TO_KPCGYR
 from tambora.dynamics import DirectSummationGravity
 from tambora.dynamics.hooks import (Hook, ConservationMonitor, BoundednessHook,
-                                    EveryOutput, EveryNSteps, EveryNOutputs)
+                                    EveryOutput, EveryStep, EveryNSteps, EveryNOutputs)
 import astropy.units as u
 
 
@@ -999,6 +999,92 @@ def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
             cache_self_gravity_acc=cache_self_gravity, 
             cache_self_gravity_pot=cache_self_potential)
     
+class TestReadingAnAbsentCache:
+    """`elif use_cached and <cache> is None: raise`.
+
+    The decorator ``_resolve_use_cached`` already rejects the obvious misuses
+    (asking for the cache before run(), alongside a ``method``, or with
+    ``include_all_components=False``). This branch catches the one it cannot see:
+    a run that *succeeded* but was told not to cache, after which ``use_cached``
+    defaults to True because the sim has run. Without it the ``else`` would fall
+    through and recompute with ``method=None``, so the user would get a confusing
+    failure from the solver instead of a sentence telling them what to do.
+
+    The same four lines exist on Sim.self_gravity, Sim.self_potential,
+    Component.self_gravity and Component.self_potential; all four are pinned.
+    """
+
+    def _uncached(self):
+        sim = _caching_test_sim()
+        _run_caching_test_sim(sim, cache_self_gravity=False, cache_self_potential=False)
+        return sim
+
+    def test_sim_self_gravity_explains_the_missing_cache(self):
+        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+            self._uncached().self_gravity()
+
+    def test_sim_self_potential_explains_the_missing_cache(self):
+        # Note the wording: the potential branch says "self-potential", the
+        # acceleration branch "self-gravity". Two caches, two messages.
+        with pytest.raises(ValueError, match="Cached self-potential is not available"):
+            self._uncached().self_potential()
+
+    def test_component_self_gravity_explains_the_missing_cache(self):
+        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+            self._uncached().test.self_gravity()
+
+    def test_component_self_potential_explains_the_missing_cache(self):
+        with pytest.raises(ValueError, match="Cached self-potential is not available"):
+            self._uncached().test.self_potential()
+
+    @pytest.mark.parametrize("explicit", [True, False], ids=['use_cached=True', 'implicit'])
+    def test_it_raises_whether_use_cached_is_explicit_or_defaulted(self, explicit):
+        # The implicit path is the one users hit: after run(), _resolve_use_cached
+        # sets use_cached = sim._has_run, so a plain self_gravity() call asks for
+        # a cache that was never written. Nobody typed use_cached=True.
+        sim = self._uncached()
+        kw = {'use_cached': True} if explicit else {}
+        with pytest.raises(ValueError, match="Cached self-gravity is not available"):
+            sim.self_gravity(**kw)
+
+    def test_the_error_names_the_way_out(self):
+        # The message is the whole value of this branch, so pin its advice.
+        with pytest.raises(ValueError, match="use_cached to False"):
+            self._uncached().self_gravity()
+
+    def test_taking_the_advice_needs_an_explicit_time_too(self):
+        # The message says "set use_cached to False and provide a method". Doing
+        # exactly that still fails: on-the-fly evaluation cannot do t=... (all
+        # snapshots), so a second error demands an explicit t. The advice is
+        # incomplete -- pinned so that if the message is improved to mention t,
+        # this test is what says so. See TODO.
+        sim = self._uncached()
+        with pytest.raises(TypeError, match="Cannot compute on-the-fly for all times"):
+            sim.self_gravity(use_cached=False, method='direct', eps=0.0)
+
+    def test_the_advice_works_once_a_time_is_given(self):
+        sim = self._uncached()
+        acc = sim.self_gravity(use_cached=False, method='direct', eps=0.0, t=0)
+        assert acc.shape == (10, 3)
+        comp = sim.test.self_gravity(use_cached=False, method='direct', eps=0.0, t=0)
+        np.testing.assert_allclose(comp, acc)      # one component == whole sim here
+
+    def test_a_cached_run_does_not_raise(self):
+        # The control: this must fail only because caching was disabled.
+        sim = _caching_test_sim()
+        _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=True)
+        assert sim.self_gravity().shape == (len(sim.times), 10, 3)
+        assert sim.test.self_potential().shape == (len(sim.times), 10)
+
+    def test_each_cache_is_independent(self):
+        # acc cached, pot not: self_gravity must work while self_potential raises.
+        sim = _caching_test_sim()
+        _run_caching_test_sim(sim, cache_self_gravity=True, cache_self_potential=False)
+        assert sim.self_gravity().shape == (len(sim.times), 10, 3)
+        with pytest.raises(ValueError, match="Cached self-potential is not available"):
+            sim.self_potential()
+
+
 def test_no_self_gravity_pot_or_acc_caching_after_run():
     '''
     Test that self-gravity potential and acceleration are not cached during
@@ -2025,16 +2111,21 @@ class _StubHook(Hook):
     """
     default_cadence = EveryNSteps(7)
 
+    def __init__(self):
+        self.steps = []          # step index of every fire
+        self.times = []          # ... and the time, so cadence can be checked
+
     def __call__(self, state):
-        pass
+        self.steps.append(state.step)
+        self.times.append(state.t)
 
 
 class _BadCadenceHook(Hook):
     """A hook whose ``default_cadence`` is not a Cadence, to test validation."""
     default_cadence = "every step, please"      # not a Cadence instance
 
-    def __call__(self, state):
-        pass
+    def __call__(self, state):                  # never reached: registration raises
+        raise AssertionError("_BadCadenceHook must never be fired")
 
 
 class _KeyedHook(Hook):
@@ -2045,12 +2136,101 @@ class _KeyedHook(Hook):
     """
     def __init__(self, label):
         self.label = label
+        self.steps = []
 
     def _dedup_key(self):
         return (type(self), self.label)
 
     def __call__(self, state):
-        pass
+        self.steps.append(state.step)
+
+
+class TestHooksFireAtTheirCadence:
+    """The register -> run -> fire path.
+
+    ``TestAddHook`` below checks only what ``add_hook`` *stores*. That leaves the
+    part users actually care about untested: that the stored cadence governs when
+    the hook is called. These run a real (tiny, self-gravity-free) sim and check
+    which steps each hook saw.
+
+    Cadences are evaluated as ``step % n == 0`` against the *step index*, and the
+    runner also fires once on the initial state at step 0 -- so 0 is always due.
+    """
+
+    def _sim(self):
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        return sim
+
+    def _run(self, sim, t_end=6.0):
+        # dt=1 => step index == t; dt_out=2 => steps_per_output=2.
+        sim.run(t_end=t_end, dt=1.0, dt_out=2.0, method=None,
+                progress=False, monitors=False)
+
+    def test_hook_fires_at_its_own_default_cadence(self):
+        # _StubHook's default is EveryNSteps(7), deliberately not EveryOutput,
+        # so this cannot pass by accidentally falling back to the default.
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook)                      # no cadence -> use the hook's own
+        self._run(sim, t_end=14.0)
+        assert hook.steps == [0, 7, 14]
+
+    def test_explicit_cadence_overrides_the_hook_default(self):
+        # The stored cadence must be the one that fires -- not the hook's default.
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook, EveryNSteps(2))
+        self._run(sim)
+        assert hook.steps == [0, 2, 4, 6]       # not [0, 7] from EveryNSteps(7)
+
+    def test_every_step_fires_on_every_step(self):
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook, EveryStep())
+        self._run(sim)
+        assert hook.steps == [0, 1, 2, 3, 4, 5, 6]
+
+    def test_every_output_follows_dt_out_not_dt(self):
+        # steps_per_output = dt_out/dt = 2, so this must not fire every step.
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook, EveryOutput())
+        self._run(sim)
+        assert hook.steps == [0, 2, 4, 6]
+
+    def test_every_n_outputs_multiplies_the_output_interval(self):
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook, EveryNOutputs(2))    # every 2 outputs = every 4 steps
+        self._run(sim)
+        assert hook.steps == [0, 4]
+
+    def test_hooks_with_different_cadences_fire_independently(self):
+        sim = self._sim()
+        fast, slow = _StubHook(), _StubHook()
+        sim.add_hook(fast, EveryNSteps(1))
+        sim.add_hook(slow, EveryNSteps(3))
+        self._run(sim)
+        assert fast.steps == [0, 1, 2, 3, 4, 5, 6]
+        assert slow.steps == [0, 3, 6]
+
+    def test_a_hook_sees_the_time_matching_its_step(self):
+        # The state handed to the hook must be the live one for that step, not a
+        # stale view: with dt=1 from t0=0, time and step index coincide.
+        sim = self._sim()
+        hook = _StubHook()
+        sim.add_hook(hook, EveryNSteps(2))
+        self._run(sim)
+        np.testing.assert_allclose(hook.times, hook.steps)
+
+    def test_a_keyed_hook_fires_too(self):
+        # _KeyedHook opts into dedup; that must not affect whether it runs.
+        sim = self._sim()
+        hook = _KeyedHook('sat')
+        sim.add_hook(hook, EveryNSteps(3))
+        self._run(sim)
+        assert hook.steps == [0, 3, 6]
 
 
 class TestAddHook:
