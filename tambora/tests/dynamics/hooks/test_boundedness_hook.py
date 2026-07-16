@@ -19,14 +19,21 @@ The replay these accessors sit on (``reconstruct_mask``) and the physics they
 report (``bound_mask``) are tested in ``tests/dynamics/test_boundedness.py``.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
 from tambora.dynamics.hooks import BoundednessHook
+from tambora.dynamics.hooks.boundedness import _bound_com, _bound_dispersion
 
 
 def _initial():
     return np.array([True, True, True, True])
+
+
+def _all(n):
+    return np.ones(n, dtype=bool)
 
 # =============================================================================
 # BoundednessHook.release_time -- when did each unbound particle leave?
@@ -334,3 +341,91 @@ def test_counting_accessors_accept_explicit_times():
     np.testing.assert_array_equal(bh.n_bound([1.5]), [1])
     np.testing.assert_allclose(bh.fraction([1.5]), [0.5])
     np.testing.assert_array_equal(bh.n_unbound([1.5]), [1])
+
+
+# =============================================================================
+# Tracked reductions -- the mass-weighted arithmetic itself
+# =============================================================================
+#
+# _bound_com is a weighted mean; _bound_dispersion is the mass-weighted RMS
+# speed about that mean. Both are restricted to the bound set, which is the part
+# worth pinning: a reduction that quietly includes stripped particles would
+# track the stream, not the remnant.
+
+def test_bound_com_is_mass_weighted():
+    pos = np.array([[0., 0, 0], [2, 0, 0]])
+    np.testing.assert_allclose(_bound_com(pos, np.array([1., 1]), _all(2)), [1, 0, 0])
+    np.testing.assert_allclose(_bound_com(pos, np.array([3., 1]), _all(2)), [0.5, 0, 0])
+
+
+def test_bound_com_ignores_unbound_particles():
+    pos = np.array([[0., 0, 0], [2, 0, 0], [1e6, 0, 0]])
+    mask = np.array([True, True, False])
+    np.testing.assert_allclose(_bound_com(pos, np.ones(3), mask), [1, 0, 0])
+
+
+def test_bound_com_matches_numpy_average():
+    rng = np.random.default_rng(0)
+    pos, mass = rng.normal(size=(20, 3)), rng.uniform(0.5, 2, 20)
+    mask = rng.random(20) > 0.3
+    np.testing.assert_allclose(
+        _bound_com(pos, mass, mask),
+        np.average(pos[mask], axis=0, weights=mass[mask]))
+
+
+def test_bound_dispersion_is_zero_for_a_cold_set():
+    vel = np.tile([3., -1, 2], (5, 1))          # every particle identical
+    assert _bound_dispersion(vel, np.ones(5), _all(5)) == pytest.approx(0.0)
+
+
+def test_bound_dispersion_is_the_rms_speed_about_the_com():
+    vel = np.array([[1., 0, 0], [-1, 0, 0]])    # v_com = 0; |v| = 1 each
+    assert _bound_dispersion(vel, np.ones(2), _all(2)) == pytest.approx(1.0)
+
+
+def test_bound_dispersion_is_invariant_under_a_velocity_boost():
+    rng = np.random.default_rng(1)
+    vel, mass = rng.normal(size=(30, 3)), rng.uniform(0.5, 2, 30)
+    ref = _bound_dispersion(vel, mass, _all(30))
+    boosted = _bound_dispersion(vel + [100., -50, 30], mass, _all(30))
+    assert boosted == pytest.approx(ref)
+
+
+def test_bound_dispersion_ignores_unbound_particles():
+    vel = np.array([[1., 0, 0], [-1, 0, 0], [1e6, 0, 0]])
+    mask = np.array([True, True, False])
+    assert _bound_dispersion(vel, np.ones(3), mask) == pytest.approx(1.0)
+
+
+def test_reductions_of_an_empty_bound_set_are_nan_without_warning():
+    # bound_mask is documented to return all-False when a component fully
+    # dissolves. The reductions must return nan (keeping bh.com aligned with bh.t) rather than raise -- and must do it
+    # deliberately, not as 0/0 debris behind a RuntimeWarning.
+    pos, mass, none_bound = np.zeros((2, 3)), np.ones(2), np.zeros(2, dtype=bool)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')          # any RuntimeWarning fails here
+        assert np.isnan(_bound_com(pos, mass, none_bound)).all()
+        assert np.isnan(_bound_dispersion(pos, mass, none_bound))
+
+
+def test_reductions_are_nan_when_the_bound_set_is_entirely_massless():
+    # Same 0/0, reachable a second way: massless tracers.
+    pos, massless = np.zeros((2, 3)), np.zeros(2)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        assert np.isnan(_bound_com(pos, massless, _all(2))).all()
+        assert np.isnan(_bound_dispersion(pos, massless, _all(2)))
+
+
+def test_a_dissolved_component_tracks_nan_rather_than_failing():
+    # End to end: the hook must survive total dissolution. The first fire is the
+    # control.
+    comp = _FakeComponent(np.array([[0., 0, 0], [2, 0, 0]]),
+                          np.array([[1., 0, 0], [-1, 0, 0]]),
+                          np.ones(2))
+    bh, _ = _drive([[True, True], [False, False]], comp=comp,
+                   track=('com', 'dispersion'))
+    np.testing.assert_allclose(bh.com[0], [1., 0, 0])       # both bound
+    assert bh.dispersion[0] == pytest.approx(1.0)
+    assert np.isnan(bh.com[1]).all()                        # dissolved
+    assert np.isnan(bh.dispersion[1])

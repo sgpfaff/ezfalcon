@@ -26,12 +26,17 @@ _DIRECTIONS = {'unbound': -1, 'bound': +1}
 # -- coordinate-dependent reductions (must be tracked; not derivable from deltas) --
 
 def _bound_com(x, mass, mask):
+    # nan, deliberately: the COM of nothing is undefined.
     m = mass[mask]
+    if m.sum() == 0:
+        return np.full(x.shape[1], np.nan)
     return (m[:, None] * x[mask]).sum(0) / m.sum()
 
 
 def _bound_dispersion(vel, mass, mask):
     m = mass[mask]
+    if m.sum() == 0:
+        return np.nan                       # see _bound_com
     v_com = (m[:, None] * vel[mask]).sum(0) / m.sum()
     return np.sqrt((m * np.sum((vel[mask] - v_com) ** 2, axis=-1)).sum() / m.sum())
 
