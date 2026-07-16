@@ -107,9 +107,12 @@ def _runner(pos: np.ndarray, vel: np.ndarray, mass: np.ndarray,
 
     # Fire once on the initial state (t0) so hooks capture the starting point.
     if hooks:
+        conserv_ext_acc0 = conserv_ext_force.acc(pos, mass, t0)
+        base_ext_acc0 = base_ext_force.acc(pos, vel, mass, t0)
         initial_result = StepResult(pos=pos, vel=vel, mass=mass, t=t0,
                                     self_acc=self_acc0, self_pot=self_pot0,
-                                    conserv_ext_acc=None, base_ext_acc=None, step=0)
+                                    conserv_ext_acc=conserv_ext_acc0,
+                                    base_ext_acc=base_ext_acc0, step=0)
         _fire(hooks, state, initial_result, 0, steps_per_output)
 
     for step, t in enumerate(pbar, start=1):
