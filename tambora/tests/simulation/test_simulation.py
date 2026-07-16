@@ -3,7 +3,8 @@ Test the Sim class and its methods.
 '''
 
 import pytest 
-from tambora.simulation import Sim, Component
+from tambora.simulation import Sim
+from tambora.simulation.simulation import _force_label, Component
 import numpy as np
 from tambora.tools.util import G_INTERNAL
 from tambora.tools.util.units import KMS_TO_KPCGYR
@@ -2286,6 +2287,74 @@ class TestSimRepr:
         assert "snapshots" in r and "not run" not in r
 
 
+# --- _force_label: the repr helper for external forces ------------------------------------------ #
+
+class TestForceLabel:
+    """``_force_label``: how an external force is named in ``Sim.__repr__``.
+
+    Driven with stand-ins rather than real forces, because which branch a real
+    force takes depends on the installed galpy. ``_ensure_pot`` folds a list into
+    a ``CompositePotential`` on galpy >= 1.11, but returns it unchanged on older
+    galpy, where lists *were* the composite API. So the list branch is live on
+    galpy 1.9/1.10 (which the galpy-compat CI matrix covers) and unreachable on
+    1.11+. Stand-ins pin all three branches on every version.
+    """
+
+    class _NoPot:
+        pass
+
+    class _SinglePot:
+        class _P: pass
+        _pot = _P()
+
+    class _ListPot:
+        class _A: pass
+        class _B: pass
+        _pot = None            # set below; needs the inner classes to exist first
+
+    def test_force_without_a_potential_is_named_by_its_type(self):
+        assert _force_label(self._NoPot()) == '_NoPot'
+
+    def test_force_with_a_none_potential_is_named_by_its_type(self):
+        # getattr(..., '_pot', None) cannot tell "absent" from "present but None";
+        # both must fall back to the bare type name rather than print "(None)".
+        class HasNonePot:
+            _pot = None
+        assert _force_label(HasNonePot()) == 'HasNonePot'
+
+    def test_single_potential_is_named_in_parentheses(self):
+        assert _force_label(self._SinglePot()) == '_SinglePot(_P)'
+
+    @pytest.mark.parametrize("seq", [list, tuple])
+    def test_a_sequence_of_potentials_is_joined_with_plus(self, seq):
+        # The galpy < 1.11 shape: _pot is a plain list/tuple of components.
+        class A: pass
+        class B: pass
+        class C: pass
+        class Multi: pass
+        m = Multi()
+        m._pot = seq([A(), B(), C()])
+        assert _force_label(m) == 'Multi(A+B+C)'
+
+    def test_a_single_element_sequence_still_uses_the_join_branch(self):
+        class A: pass
+        class Multi: pass
+        m = Multi()
+        m._pot = [A()]
+        assert _force_label(m) == 'Multi(A)'      # no trailing '+'
+
+    def test_a_composite_potential_is_named_by_its_own_type(self):
+        # The galpy >= 1.11 shape: _ensure_pot has already folded the list into a
+        # CompositePotential, which is not a list -- so the join branch does NOT
+        # fire and the label is the composite's type name. Documents why a real
+        # MWPotential2014 reads as "(CompositePotential)" rather than "(A+B+C)".
+        class CompositePotential: pass
+        class Ext: pass
+        e = Ext()
+        e._pot = CompositePotential()
+        assert _force_label(e) == 'Ext(CompositePotential)'
+
+
 # --- default monitors (run's monitors= / Sim.monitor) ------------------------------------------ #
 
 class TestDefaultMonitors:
@@ -2315,6 +2384,21 @@ class TestDefaultMonitors:
         self._run(sim, monitors=False)
         assert sim.monitor is None
         assert sim.hooks == ()
+
+    @pytest.mark.parametrize("empty", [(), []])
+    def test_an_empty_sequence_attaches_no_monitor(self, empty):
+        # the same as monitors=False by a different route.
+        sim = self._sim()
+        self._run(sim, monitors=empty)
+        assert sim.monitor is None
+        assert sim.hooks == ()
+
+    def test_an_empty_string_is_rejected_rather_than_ignored(self):
+        # '' is NOT an empty track: the str branch wraps it to ('',), a request
+        # for a quantity named ''.
+        sim = self._sim()
+        with pytest.raises(ValueError, match="Unknown conserved quantity"):
+            self._run(sim, monitors='')
 
     def test_explicit_track_is_honoured(self):
         sim = self._sim()
