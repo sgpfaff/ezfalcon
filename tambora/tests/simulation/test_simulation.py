@@ -999,6 +999,28 @@ def _run_caching_test_sim(sim, cache_self_gravity, cache_self_potential):
             cache_self_gravity_acc=cache_self_gravity, 
             cache_self_gravity_pot=cache_self_potential)
     
+def test_eps_dict_rejects_a_value_that_is_neither_scalar_nor_matching_array():
+    # `raise ValueError(f"eps[{name!r}] must be a scalar or 1D array...")`.
+    # eps= accepts a per-component dict.
+    sim = Sim()
+    sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+    n = len(COMP1_MASS)
+    with pytest.raises(ValueError, match=r"eps\['a'\] must be a scalar or 1D array"):
+        sim.run(t_end=1.0, dt=1.0, dt_out=1.0, method='direct', progress=False,
+                monitors=False, eps={'a': np.zeros((n, 2))})       # 2D, not 1D
+
+
+def test_eps_dict_accepts_a_scalar_and_a_matching_array():
+    # The control for the guard above: both valid forms must pass.
+    n = len(COMP1_MASS)
+    for val in (0.05, np.full(n, 0.05)):
+        sim = Sim()
+        sim.add_particles('a', COMP1_POS, COMP1_VEL, COMP1_MASS)
+        sim.run(t_end=1.0, dt=1.0, dt_out=1.0, method='direct', progress=False,
+                monitors=False, eps={'a': val})
+        assert sim._has_run
+
+
 class TestReadingAnAbsentCache:
     """`elif use_cached and <cache> is None: raise`.
 
