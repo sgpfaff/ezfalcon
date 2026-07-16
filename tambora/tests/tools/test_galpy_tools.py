@@ -1,7 +1,7 @@
 import pytest
 from galpy.df import isotropicHernquistdf
 from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential
-from tambora.tools import galpydfsampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
+from tambora.tools import galpydfsampler, galpysampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
 from tambora.tools.galpy_tools import _check_df, galpysampler
 import numpy as np
 import astropy.units as u
@@ -218,3 +218,42 @@ def test_tools_raise_helpful_error_when_galpy_missing(monkeypatch, call):
                         ImportError("No module named 'galpy'"))
     with pytest.raises(ImportError, match="galpy is required"):
         call()
+
+# --- galpysampler: the per-potential DF dispatch --------------------------------------- #
+#
+# galpysampler picks a DF from the potential's type. Only the Plummer branch was
+# reached; Hernquist, NFW and the eddingtondf fallback were not.
+
+@pytest.mark.parametrize("pot_factory, expect_df", [
+    pytest.param(lambda: PlummerPotential(amp=1e10, b=0.5, ro=8., vo=220.),
+                 'isotropicPlummerdf', id='plummer'),
+    pytest.param(lambda: HernquistPotential(amp=1e10, a=0.5, ro=8., vo=220.),
+                 'isotropicHernquistdf', id='hernquist'),
+    pytest.param(lambda: NFWPotential(amp=1e11, a=5., ro=8., vo=220.),
+                 'isotropicNFWdf', id='nfw'),
+])
+def test_galpysampler_dispatches_on_the_potential_type(pot_factory, expect_df, monkeypatch):
+    import tambora.tools.galpy_tools as gt
+    seen = {}
+    real = gt.galpydfsampler
+
+    def spy(_df, **kw):
+        seen['df'] = type(_df).__name__
+        return real(_df, **kw)
+
+    monkeypatch.setattr(gt, 'galpydfsampler', spy)
+    pot = pot_factory()
+    pot.turn_physical_on()
+    gt.galpysampler(pot, n=5, m_total=1e6)
+    assert seen['df'] == expect_df
+
+
+def test_galpysampler_samples_a_hernquist_and_an_nfw():
+    # Not just dispatch: the sampled output must be usable.
+    for pot in (HernquistPotential(amp=1e10, a=0.5, ro=8., vo=220.),
+                NFWPotential(amp=1e11, a=5., ro=8., vo=220.)):
+        pot.turn_physical_on()
+        pos, vel, mass = galpysampler(pot, n=8, m_total=1e6)
+        assert pos.shape == (8, 3) and vel.shape == (8, 3) and mass.shape == (8,)
+        assert np.isfinite(pos).all() and np.isfinite(vel).all()
+        np.testing.assert_allclose(mass.sum(), 1e6)
