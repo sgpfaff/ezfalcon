@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from tambora.dynamics.integration import _runner
+from tambora.dynamics.integration import _runner, StepState
 from galpy.util.coords import cyl_to_rect, cyl_to_rect_vec
 from tambora.tools.util import _galpy_pot_to_acc_fn, _galpy_pot_to_pot_fn
 from tambora.simulation import Sim
@@ -548,4 +548,35 @@ def test_time_dependent_potential_energy_matches_galpy():
         f"Energy barely changed (range={energy_range:.2e} km^2/s^2) — "
         "time-dependent potential may not be evolving."
     )
+
+
+# --- bare-function hooks fire end-to-end through Sim.add_hook / run ------------- #
+
+def test_bare_function_hook_fires_during_run_with_step_state():
+    '''A plain function (no default_cadence) registered via add_hook is invoked
+    each output during the run, receiving a live StepState.
+
+    Exercises the full documented path Sim.add_hook -> run -> _fire -> hook(state)
+    for the "any bare callable" case, and confirms the argument is a real
+    StepState view (its accessors work and carry the component's shape). The
+    StepState object is reused across fires, so per-fire data must be copied out
+    inside the hook rather than by stashing the state itself.
+    '''
+    seen_t, seen_shapes, seen_is_state = [], [], []
+
+    def record(state):
+        seen_t.append(state.t)
+        seen_shapes.append(state.pos().shape)
+        seen_is_state.append(isinstance(state, StepState))
+
+    sim = Sim()
+    sim.add_particles('c', np.zeros((4, 3)), np.zeros((4, 3)), np.ones(4))
+    sim.add_hook(record)                 # bare callable -> EveryOutput cadence
+
+    sim.run(t_end=1.0, dt=0.5, dt_out=0.5, method=None, progress=False)
+
+    # Fires once at t0 then at every output (dt_out == dt here): t = 0.0, 0.5, 1.0.
+    np.testing.assert_allclose(seen_t, [0.0, 0.5, 1.0])
+    assert all(seen_is_state)                    # really a StepState, not a raw tuple
+    assert seen_shapes == [(4, 3), (4, 3), (4, 3)]   # component's live positions
 
