@@ -1846,7 +1846,7 @@ class Sim:
 
     @_resolve_use_cached
     def plot_energy_diagnostic(self, method=None, use_cached=True, nsnap=None, 
-                        filename=None, **kwargs):
+                        filename=None, **kwargs):   # pragma: no cover
         '''
         Plot global energy conservation as a function of 
         time.
@@ -1887,7 +1887,7 @@ class Sim:
             plt.show()
     
     def plot_momentum_diagnostic(self, filename=None,
-                                 plot_components=True):
+                                 plot_components=True):   # pragma: no cover
         '''
         Plot the distribution of particle momenta at *t*.
 
