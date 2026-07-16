@@ -53,20 +53,12 @@ class Force(ABC):
 
 class NullForce(Force):
     """No-op external force. Used as an empty external slot."""
-
-    def __init__(self):
-        self._zeros_array_3d = None
-        self._zeros_array_1d = None
-
+    
     def acc(self, pos, vel, mass, t):
-        if self._zeros_array_3d is None:
-            self._zeros_array_3d = np.zeros_like(pos)
-        return self._zeros_array_3d
+        return np.zeros_like(pos)
 
     def potential(self, pos, vel, mass, t):
-        if self._zeros_array_1d is None:
-            self._zeros_array_1d = np.zeros(pos.shape[0])
-        return self._zeros_array_1d
+        return np.zeros(pos.shape[0])
 
     def acc_and_potential(self, pos, vel, mass, t):
         return self.acc(pos, vel, mass, t), self.potential(pos, vel, mass, t)
