@@ -1,6 +1,6 @@
 import pytest
 from galpy.df import isotropicHernquistdf
-from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential
+from galpy.potential import HernquistPotential, PlummerPotential, NFWPotential, JaffePotential
 from tambora.tools import galpydfsampler, galpysampler, galpy_orbit_to_tambora, mkPlummer_galpy, mkKing_galpy, mkNFW_galpy
 from tambora.tools.galpy_tools import _check_df, galpysampler
 import numpy as np
@@ -257,3 +257,58 @@ def test_galpysampler_samples_a_hernquist_and_an_nfw():
         assert pos.shape == (8, 3) and vel.shape == (8, 3) and mass.shape == (8,)
         assert np.isfinite(pos).all() and np.isfinite(vel).all()
         np.testing.assert_allclose(mass.sum(), 1e6)
+
+
+def test_galpysampler_falls_back_to_eddingtondf_for_other_spherical_potentials(monkeypatch):
+    # The `else` arm of the dispatch: anything that is not Plummer/Hernquist/NFW
+    # gets galpy's general eddingtondf. Jaffe is spherical and has no dedicated
+    # isotropic DF, so it exercises the fallback.
+    seen = {}
+    real = gt.galpydfsampler
+
+    def spy(_df, **kw):
+        seen['df'] = type(_df).__name__
+        return real(_df, **kw)
+    monkeypatch.setattr(gt, 'galpydfsampler', spy)
+    pot = JaffePotential(amp=1e10, ro=8., vo=220.)
+    pot.turn_physical_on()
+    pos, vel, mass = galpysampler(pot, n=6, m_total=1e6)
+    assert pos.shape == (6, 3) and vel.shape == (6, 3)
+    assert np.isfinite(pos).all() and np.isfinite(vel).all()
+    np.testing.assert_allclose(mass.sum(), 1e6)
+    from galpy.df import eddingtondf
+    assert seen['df'] == eddingtondf.__name__
+
+
+# --- mkKing_galpy: the optional df arguments ------------------------------------------- #
+
+def test_mkKing_galpy_accepts_a_tidal_radius():
+    # `if rt is not None: df_kwargs['rt'] = rt / _GALPY_RO` -- rt is given in kpc
+    # and must be converted to galpy's natural units before reaching kingdf.
+    pos, vel, mass = mkKing_galpy(m=1e6, n=8, W0=3., rt=2.0)
+    assert pos.shape == (8, 3)
+    np.testing.assert_allclose(mass.sum(), 1e6)
+
+
+def test_mkKing_galpy_accepts_an_npts_override():
+    # `if npts is not None: df_kwargs['npt'] = npts` -- note the key is 'npt',
+    # not 'npts'; a typo here would be a silent TypeError from kingdf.
+    pos, vel, mass = mkKing_galpy(m=1e6, n=8, W0=3., npts=100)
+    assert pos.shape == (8, 3)
+
+
+def test_mkKing_galpy_accepts_both_options_together():
+    pos, vel, mass = mkKing_galpy(m=1e6, n=8, W0=3., rt=2.0, npts=100)
+    assert pos.shape == (8, 3)
+    assert np.isfinite(pos).all()
+
+
+def test_mkKing_galpy_rt_is_a_physical_radius_not_a_natural_one():
+    # rt is divided by _GALPY_RO (8 kpc). If that conversion were dropped, rt=2.0
+    # would mean 16 kpc and the cluster would come out ~8x larger.
+    tight = mkKing_galpy(m=1e6, n=200, W0=3., rt=1.0, center_pos=[0, 0, 0])[0]
+    wide = mkKing_galpy(m=1e6, n=200, W0=3., rt=5.0, center_pos=[0, 0, 0])[0]
+    r_tight = np.linalg.norm(tight, axis=-1).max()
+    r_wide = np.linalg.norm(wide, axis=-1).max()
+    assert r_tight < r_wide, f"rt is not scaling the cluster: {r_tight} vs {r_wide}"
+    assert r_tight < 1.5, f"rt=1.0 kpc produced a {r_tight:.2f} kpc cluster"
