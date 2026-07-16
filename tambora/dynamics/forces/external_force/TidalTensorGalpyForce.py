@@ -33,6 +33,16 @@ class TidalTensorGalpyForce(ExternalConservativeForce):
                                          t=0.0, use_physical=False)).reshape(3, 3)
         return T, pos - c
 
+    def tidal_tensor(self, pos):
+        """Tidal tensor at the cluster center, in internal units [1/Gyr^2].
+
+        The center is ``self._center`` if set, else the median of ``pos``
+        (matching ``acc``/``potential``). Symmetric (3, 3); its largest
+        eigenvalue is the stretching (tidal) direction.
+        """
+        T, _ = self._tensor_disp(pos)
+        return T * self._vo_int**2 / self._ro**2
+
     def acc(self, pos, t):
         T, d = self._tensor_disp(pos)
         return d @ T.T * self._vo_int**2 / self._ro**2
