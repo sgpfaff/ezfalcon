@@ -126,9 +126,9 @@ def _cluster_plus_stream(f_stream, n_total=600, m_cl=1e6, scale=0.1, seed=0):
 
     pos_c = rng.normal(scale=scale, size=(n_c, 3)) + np.array([R_GAL, 0.0, 0.0])
     vel_c = np.tile([0.0, V, 0.0], (n_c, 1))     # cold: bound by potential alone
-    if n_s == 0:
-        return pos_c, vel_c, np.full(n_c, m_cl / n_c), np.ones(n_c, bool)
 
+    # n_s == 0 needs no special case: the empty arrays below flow through
+    # column_stack/vstack unchanged, giving the bare cluster.
     ang = rng.uniform(0, 2 * np.pi, n_s)
     pos_s = np.column_stack([R_GAL * np.cos(ang), R_GAL * np.sin(ang),
                              rng.normal(0, 0.5, n_s)])
@@ -142,7 +142,7 @@ def _cluster_plus_stream(f_stream, n_total=600, m_cl=1e6, scale=0.1, seed=0):
     return pos, vel, mass, truth
 
 
-@pytest.mark.parametrize("f_stream", [0.3, 0.5, 0.7, 0.9])
+@pytest.mark.parametrize("f_stream", [0.0, 0.3, 0.5, 0.7, 0.9])
 def test_remnant_survives_a_stream_that_drags_the_global_mean_velocity(f_stream):
     """Regression: seeding the COM frame from the global mean unbinds everything.
 
