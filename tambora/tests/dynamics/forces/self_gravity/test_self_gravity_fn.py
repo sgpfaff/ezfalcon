@@ -85,9 +85,9 @@ def test_rejects_invalid_kwargs():
     '''
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
-    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+    with pytest.raises(ValueError, match=r"{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
         self_gravity(pos, mass, method='direct', eps=0.1, invalid_kwarg=123)
-    with pytest.raises(ValueError, match="\{'invalid_kwarg'\} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+    with pytest.raises(ValueError, match=r"\{'invalid_kwarg'\} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
         self_gravity(pos, mass, method='falcON', eps=0.1, theta=0.5, invalid_kwarg=123)
 
 def test_rejects_unknown_method():
@@ -96,7 +96,7 @@ def test_rejects_unknown_method():
     '''
     pos = np.random.normal(size=(2,3))
     mass = 10**np.random.normal(loc = 10, scale=1, size=(2,))
-    with pytest.raises(ValueError, match="Unknown method 'unknown_method' for self-gravity. Supported methods: \['direct', 'direct_C', 'falcON'\]"):
+    with pytest.raises(ValueError, match=r"Unknown method 'unknown_method' for self-gravity. Supported methods: \['direct', 'direct_C', 'falcON'\]"):
         self_gravity(pos, mass, method='unknown_method', eps=0.1)
 
 # --- direct_C method -------------------------------------------------------------------------- #

@@ -124,12 +124,12 @@ def test_add_particles_invalid_pos_shapes():
     position shapes raises an error.
     '''
     sim = Sim()
-    with pytest.raises(ValueError, match="pos must be shape \(N, 3\), received \(50, 2\)"):
+    with pytest.raises(ValueError, match=r"pos must be shape \(N, 3\), received \(50, 2\)"):
         sim.add_particles('comp1',
                           pos=np.random.rand(COMP1_NPTS, 2),
                           vel=COMP1_VEL,
                           mass=COMP1_MASS)
-    with pytest.raises(ValueError, match="pos must be shape \(N, 3\), received \(50, 4\)"):
+    with pytest.raises(ValueError, match=r"pos must be shape \(N, 3\), received \(50, 4\)"):
         sim.add_particles('comp1',
                           pos=np.random.rand(COMP1_NPTS, 4),
                           vel=COMP1_VEL,
@@ -141,12 +141,12 @@ def test_add_particles_invalid_vel_shapes():
     velocity shapes raises an error.
     '''
     sim = Sim()
-    with pytest.raises(ValueError, match="vel must be shape \(N, 3\), received \(50, 2\)"):
+    with pytest.raises(ValueError, match=r"vel must be shape \(N, 3\), received \(50, 2\)"):
         sim.add_particles('comp1',
                           pos=COMP1_POS,
                           vel=np.random.rand(COMP1_NPTS, 2),
                           mass=COMP1_MASS)
-    with pytest.raises(ValueError, match="vel must be shape \(N, 3\), received \(50, 4\)"):
+    with pytest.raises(ValueError, match=r"vel must be shape \(N, 3\), received \(50, 4\)"):
         sim.add_particles('comp1',
                           pos=COMP1_POS,
                           vel=np.random.rand(COMP1_NPTS, 4),
@@ -158,12 +158,12 @@ def test_add_particles_invalid_mass_shapes():
     mass shapes raises an error.
     '''
     sim = Sim()
-    with pytest.raises(ValueError, match="mass must be shape \(N,\), received \(50, 2\)"):
+    with pytest.raises(ValueError, match=r"mass must be shape \(N,\), received \(50, 2\)"):
         sim.add_particles('comp1',
                           pos=COMP1_POS,
                           vel=COMP1_VEL,
                           mass=np.random.rand(COMP1_NPTS, 2))
-    with pytest.raises(ValueError, match="mass must be shape \(N,\), received \(50, 4\)"):
+    with pytest.raises(ValueError, match=r"mass must be shape \(N,\), received \(50, 4\)"):
         sim.add_particles('comp1',
                           pos=COMP1_POS,
                           vel=COMP1_VEL,
@@ -266,21 +266,21 @@ def test_ti_positive_int_out_of_bounds():
     '''
     Test that passing a positive integer out of bounds raises an error.
     '''
-    with pytest.raises(IndexError, match="Time index 100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
+    with pytest.raises(IndexError, match=r"Time index 100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
         multicomp._ti(100)
 
 def test_ti_negative_int_out_of_bounds():
     '''
     Test that passing a negative integer out of bounds raises an error.
     '''
-    with pytest.raises(IndexError, match="Time index -100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
+    with pytest.raises(IndexError, match=r"Time index -100 is out of bounds for simulation with 11 snapshots. Please provide an index within \[-11, 10\]."):
         multicomp._ti(-100)
 
 def test_ti_float_out_of_bounds():
     '''
     Test that passing a float out of bounds raises an error.
     '''
-    with pytest.raises(ValueError, match="t=100.0 Gyr is out of bounds for simulation time range \[0.0, 1.0\] Gyr."):
+    with pytest.raises(ValueError, match=r"t=100.0 Gyr is out of bounds for simulation time range \[0.0, 1.0\] Gyr."):
         multicomp._ti(100.0)
 
 def test_ti_fails_with_list():
@@ -774,7 +774,7 @@ def test_invalid_method():
                   eps=0.0) 
 
 def test_invalid_kwargs():
-    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+    with pytest.raises(ValueError, match=r"{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'direct' self-gravity method. Only kwargs for self-gravity methods are allowed."):
         KEPLER_SIM.run(
                   t_end=1.0, 
                   dt=0.1, 
@@ -782,7 +782,7 @@ def test_invalid_kwargs():
                   method='direct',
                   eps=0.0,
                   invalid_kwarg=42)
-    with pytest.raises(ValueError, match="{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
+    with pytest.raises(ValueError, match=r"{'invalid_kwarg'} is \(are\) invalid kwarg\(s\) for 'falcON' self-gravity method. Only kwargs for self-gravity methods are allowed."):
         KEPLER_SIM.run(
                   t_end=1.0, 
                   dt=0.1, 
