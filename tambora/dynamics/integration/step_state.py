@@ -179,6 +179,10 @@ class StepState:
     def external_acc(self):
         '''Live (x, y, z) acceleration due to external forces.'''
         c, b = self._result.conserv_ext_acc, self._result.base_ext_acc
+        if c is None and b is None:
+            return np.zeros_like(self.pos())    # no external force; allocate only here
+        # Seeded at 0.0 (not at c[sl]) so the accumulation cannot write through
+        # the view into the integrator's own array.
         out = 0.0
         if c is not None: out = out + c[self._sl]
         if b is not None: out = out + b[self._sl]
