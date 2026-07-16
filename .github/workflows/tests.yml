@@ -97,6 +97,98 @@ jobs:
               raise SystemExit('Expected ImportError, none raised')
           "
 
+  galpy-astropy-units:
+    # galpy can be configured to return astropy Quantities from every accessor
+    # instead of plain floats. That is an ordinary user setting, and tambora used
+    # to break under it (9 tests) because the default -- and so every CI job
+    # here -- is astropy-units = False. Running the suite under BOTH settings is
+    # what keeps that fixed; testing only the default is how it went unnoticed.
+    #
+    # This runs the *whole* suite deliberately, not just the galpy test modules:
+    # when the bug was found, 7 of the 9 failures were outside them (in
+    # test_LeapfrogIntegrator and test_runner), so a galpy-only run would have
+    # stayed green.
+    name: galpy astropy-units=${{ matrix.astropy-units }} (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+        astropy-units: ["True", "False"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test]"
+
+      - name: Write ~/.galpyrc with astropy-units=${{ matrix.astropy-units }}
+        # galpy resolves its config from ./.galpyrc then ~/.galpyrc, and writes a
+        # default if neither exists. Tests run from /tmp, so $HOME is the reliable
+        # location. version-check is off: it makes a network call on import.
+        run: |
+          cat > ~/.galpyrc <<'EOF'
+          [normalization]
+          ro = 8.
+          vo = 220.
+
+          [astropy]
+          astropy-units = ${{ matrix.astropy-units }}
+          astropy-coords = True
+
+          [plot]
+          seaborn-bovy-defaults = False
+
+          [warnings]
+          verbose = False
+
+          [version-check]
+          do-check = False
+          EOF
+          cat ~/.galpyrc
+
+      - name: Assert galpy actually honoured the setting
+        # Without this the job could pass vacuously: if the rc were ignored, both
+        # matrix legs would silently run the default and prove nothing.
+        working-directory: /tmp
+        run: |
+          python -c "
+          from galpy.util import config
+          got = config.__config__.get('astropy', 'astropy-units')
+          want = '${{ matrix.astropy-units }}'
+          assert got.strip().lower() == want.strip().lower(), \
+              f'.galpyrc not honoured: galpy reports {got!r}, expected {want!r}'
+          print(f'confirmed astropy-units = {got}')
+          "
+
+      - name: Assert the setting reaches a real accessor
+        # Belt and braces: prove Quantities are (or are not) actually returned,
+        # rather than trusting the config object alone.
+        working-directory: /tmp
+        run: |
+          python -c "
+          from astropy.units import Quantity
+          from galpy.orbit import Orbit
+          o = Orbit([1., 0., 1., 0., 0., 0.], ro=8., vo=220.)
+          o.turn_physical_on()
+          is_q = isinstance(o.x(), Quantity)
+          want = '${{ matrix.astropy-units }}'.strip().lower() == 'true'
+          assert is_q == want, f'Orbit.x() Quantity={is_q}, expected {want}'
+          print(f'confirmed Orbit.x() returns Quantity={is_q}')
+          "
+
+      - name: Run full suite
+        working-directory: /tmp
+        run: python -m pytest --pyargs tambora.tests -o "addopts=" -q
+
   galpy-compat:
     name: galpy ${{ matrix.galpy-version }} (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
