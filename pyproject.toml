@@ -91,6 +91,9 @@ exclude_lines = [
   # Don't complain if tests don't hit assertions
   "raise AssertionError",
   "raise NotImplementedError",
+  # Abstract method bodies are unreachable by design: the ABC cannot be
+  # instantiated, and every concrete subclass overrides them.
+  "@(abc\\.)?abstractmethod",
   # Don't complain about script hooks
   "def main(.*):",
   # Ignore branches that don't pertain to this version of Python
