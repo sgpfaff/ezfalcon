@@ -1,7 +1,7 @@
 
 # tambora
 
-*An N-body code for the modern era.*
+A publicly maintained, modular N-body python package designed for small galactic dynamics tasks with user-friendliness and extensibility in mind.
 
 [![Tests](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/sgpfaff/tambora/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/sgpfaff/tambora/branch/master/graph/badge.svg)](https://codecov.io/gh/sgpfaff/tambora)
@@ -11,20 +11,18 @@
 
 
 ## Installation
-🚧🚨 **Warning!** 🚧🚨 [tambora](https://tambora.readthedocs.io/en/latest/) is still under development. Backwards compatibility is currently not guaranteed.
 
-
-### Basic Installation
-The latest pre-release version of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+The latest alpha release of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
 
 ````bash
 pip install tambora==0.1.0a1.dev17
 ````
+🚨 **NOTE:** tambora is still under development. Backwards compatibility is currently not guaranteed. 🚨
 
 ### Optional Dependencies
 
 
-[galpy](https://docs.galpy.org/en/stable/) is required to be installed in the same environment as [tambora](https://tambora.readthedocs.io/en/latest/) to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
+[galpy](https://docs.galpy.org/en/stable/) is required to be installed in the same environment as tambora to use features including galpy external potentials and distribution function sampling. Please refer to the [galpy installation guide](https://docs.galpy.org/en/stable/installation.html) for installing galpy.
 
 
 
