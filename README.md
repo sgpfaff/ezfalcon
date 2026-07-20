@@ -12,10 +12,16 @@ A publicly maintained, modular N-body python package designed for small galactic
 
 ## Installation
 
-The latest alpha release of [tambora](https://tambora.readthedocs.io/en/latest/) can be installed using pip as follows:
+tambora is currently published as a pre-release, so pip needs `--pre` to see it:
 
 ````bash
-pip install tambora==0.1.0a1.dev17
+pip install --pre tambora
+````
+
+To pin an exact version instead:
+
+````bash
+pip install tambora==0.1.0a1
 ````
 🚨 **NOTE:** tambora is still under development. Backwards compatibility is currently not guaranteed. 🚨
 
