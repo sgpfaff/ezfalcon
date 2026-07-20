@@ -51,7 +51,7 @@ licensed under the BSD 3-Clause licence. See the licenses folder for more inform
 
 ## Acknowledgements
 
-tambora's [python bridge](tambora/tambora/dynamics/forces/self_gravity/falcON/_falcON_wrapper.cpp) to the falcON self-gravity solver possesses similar functionality and overlaps with the existing [pyfalcON](https://github.com/GalacticDynamics-Oxford/pyfalcon) code written by Eugene Vasiliev.
+tambora's python bridge to the falcON self-gravity solver possesses similar functionality and overlaps with the existing [pyfalcON](https://github.com/GalacticDynamics-Oxford/pyfalcon) code written by Eugene Vasiliev.
 
 ## Contributing
 
