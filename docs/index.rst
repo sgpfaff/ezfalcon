@@ -29,6 +29,12 @@ tambora
       Notebooks covering tambora's features, from basics to
       science applications.
 
+   .. grid-item-card:: License & Acknowledgements
+      :link: licence_and_acknowledgements
+      :link-type: doc
+
+      Licensing terms for tambora and its bundled dependencies, and credit
+      to the projects it builds on.
 ..      Release notes and the changelog for each version of tambora.
 ..   .. grid-item-card:: Quickstart
       :link: quickstart
@@ -48,5 +54,6 @@ tambora
    installation
    user_guide/index
    examples/index
+   licence_and_acknowledgements
 ..   quickstart
 
