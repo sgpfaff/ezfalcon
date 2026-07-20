@@ -67,6 +67,12 @@ jobs:
           # GCC 10.2.1. manylinux_2_28 (glibc 2.28, GCC 12+) matches what
           # numpy itself already requires of users.
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          # macos-14 is an Apple Silicon runner and cibuildwheel builds only the
+          # native arch by default, so the macosx_x86_64 entries in CIBW_BUILD
+          # silently produced nothing. Naming both archs here is what actually
+          # adds Intel; the x86_64 wheels are cross-compiled and cannot be
+          # executed on this runner, so they ship untested.
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_BUILD_VERBOSITY: 1
 
       - uses: actions/upload-artifact@v4
