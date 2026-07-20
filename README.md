@@ -49,6 +49,10 @@ This package's packaging scaffolding is based upon the
 [OpenAstronomy packaging guide](https://github.com/OpenAstronomy/packaging-guide), which is
 licensed under the BSD 3-Clause licence. See the licenses folder for more information.
 
+## Acknowledgements
+
+tambora's [python bridge](tambora/tambora/dynamics/forces/self_gravity/falcON/_falcON_wrapper.cpp) to the falcON self-gravity solver possesses similar functionality and overlap with the existing [pyfalcON](https://github.com/GalacticDynamics-Oxford/pyfalcon) code written by Eugene Vasiliev.
+
 ## Contributing
 
 We love contributions! tambora is open source,
