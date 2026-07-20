@@ -13,12 +13,6 @@ tambora
 
       How to install tambora and its optional dependencies.
 
-   .. grid-item-card:: Quickstart
-      :link: quickstart
-      :link-type: doc
-
-      A minimal working example to get up and running fast.
-
    .. grid-item-card:: User Guide
       :link: user_guide/index
       :link-type: doc
@@ -30,23 +24,18 @@ tambora
    .. grid-item-card:: Examples
       :link: examples/index
       :link-type: doc
-      :img-bottom: examples/GC_stream_evolution_no_axes.gif
+      :img-bottom: examples/stream_bnd_unbnd_w_stripping_t.pngU
 
       Notebooks covering tambora's features, from basics to
       science applications.
 
-   .. .. grid-item-card:: Diagnostics
-   ..    :link: diagnostics/index
-   ..    :link-type: doc
+..      Release notes and the changelog for each version of tambora.
+..   .. grid-item-card:: Quickstart
+      :link: quickstart
+      :link-type: doc
+   A minimal working example to get up and running fast.
 
-   ..    Convergence tests, scaling benchmarks, and energy conservation
-   ..    validation.
 
-   .. .. grid-item-card:: What's New
-   ..    :link: changelog
-   ..    :link-type: doc
-
-      Release notes and the changelog for each version of tambora.
 
 .. The navbar is built from the top-level toctree below (Installation,
 .. Quickstart, User Guide, Examples). Diagnostics and the changelog are kept
@@ -57,6 +46,7 @@ tambora
    :hidden:
 
    installation
-   quickstart
    user_guide/index
    examples/index
+..   quickstart
+
