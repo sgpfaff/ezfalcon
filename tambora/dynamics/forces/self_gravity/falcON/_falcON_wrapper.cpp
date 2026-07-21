@@ -1,5 +1,5 @@
 /// Python wrapper for falcON gravity solver from NEMO (W. Dehnen, ApJL 536, 9, 2000)
-/// This bridge possesses similar functionality and overlaps with the existing pyfalcON code written by Eugene Vasiliev
+/// tambora's falcON python wrapper is adapted from pyfalcON by Eugene Vasiliev. The gravity() interface and its argument-handling follow pyfalcon's design.
 /// Provides: gravity(pos, mass, eps, theta=0.6, kernel=1) -> (acc, pot)
 
 #include <Python.h>
