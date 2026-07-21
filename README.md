@@ -43,7 +43,7 @@ and compiles it into the `_falcon` extension module. falcON is GPL-2.0-or-later,
 distributed is a combined work and carries the same licence. See
 [licenses/LICENSE.rst](licenses/LICENSE.rst) for the full provenance.
 
-If you use the falcON self-gravity backend, please cite Dehnen (2000, 2002) alongside tambora.
+If you use the falcON self-gravity backend, please cite Dehnen (2000, 2002) and pyfalcon (E. Vasiliev,  github.com/GalacticDynamics-Oxford/pyfalcon) alongside tambora.
 
 This package's packaging scaffolding is based upon the
 [OpenAstronomy packaging guide](https://github.com/OpenAstronomy/packaging-guide), which is
@@ -51,7 +51,7 @@ licensed under the BSD 3-Clause licence. See the licenses folder for more inform
 
 ## Acknowledgements
 
-tambora's python bridge to the falcON self-gravity solver possesses similar functionality and overlaps with the [pyfalcON](https://github.com/GalacticDynamics-Oxford/pyfalcon) code written by Eugene Vasiliev.
+tambora's falcON python wrapper is adapted from [pyfalcON](https://github.com/GalacticDynamics-Oxford/pyfalcon) by Eugene Vasiliev. The `gravity()` interface and its argument-handling follow pyfalcon's design. 
 
 ## Contributing
 
